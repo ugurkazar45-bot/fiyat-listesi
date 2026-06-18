@@ -2071,7 +2071,7 @@ function buildMultiDetailCards(prods, showAll) {
   const kodlarJson = JSON.stringify(prods.map(p => p.kod)).replace(/"/g, '&quot;');
   const tumunuPaylasBtn = prods.length > 1 ? `
     <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
-      <button class="teklif-whatsapp-btn" style="padding:6px 12px;font-size:11px;display:flex;align-items:center;gap:5px;"
+      <button class="teklif-whatsapp-btn" style="padding:6px 12px;font-size:12px;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:5px;"
         onclick='shareMultipleProductsToWhatsApp(${kodlarJson})'>📤 Tümünü WhatsApp'ta Paylaş</button>
     </div>
   ` : '';
