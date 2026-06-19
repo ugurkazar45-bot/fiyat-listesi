@@ -3100,47 +3100,57 @@ function exportToExcel() {
   const tarih = new Date().toLocaleDateString('tr-TR');
   const iskLabel = isk === 'liste' ? 'Liste' : isk === 'net' ? 'NET' : isk.replace('n','%') + 'N';
 
-  // ── Sheet 1: Teklif (sepetteki ürünler) ──────────────────────────────────
-  const rows = teklifItems.map(({ prod, qty, kar, vade, mod, isk: itemIsk, firmaFiyat, _siparisKod, ozelNetFiyat }) => {
-    // BULUNAMADI ürün
+  // ── Sheet 1: Teklif (sepetteki ürünler) — formüllü ────────────────────────
+  // Sütun sırası: A Kod, B Ad, C Birim, D Adet, E Liste, F İskonto/Tip, G Birim Fiyat, H Satır Toplamı, I Durum
+  const header = ['Ürün Kodu', 'Ürün Adı', 'Birim', 'Adet', 'Liste Fiyatı (₺)', 'İskonto / Fiyat Tipi', 'Birim Fiyat (₺)', 'Satır Toplamı (₺)', 'Durum'];
+  const aoa = [header];
+  let firstDataRow = 2; // 1-indexed, satır 1 başlık
+  let lastDataRow = 1;
+
+  teklifItems.forEach(({ prod, qty, kar, vade, mod, isk: itemIsk, firmaFiyat, _siparisKod, ozelNetFiyat }) => {
     if (mod === 'bulunamadi' || !prod) {
-      return {
-        'Ürün Kodu': _siparisKod || '?',
-        'Ürün Adı': 'Sistemde kayıtlı değil — eski kod veya yeni ürün olabilir',
-        'Birim': '—',
-        'Adet': qty,
-        'Liste Fiyatı (₺)': '—',
-        'İskonto / Fiyat Tipi': 'BULUNAMADI',
-        'Birim Fiyat (₺)': '—',
-        'Satır Toplamı (₺)': '—',
-        'Durum': 'BULUNAMADI'
-      };
+      aoa.push([_siparisKod || '?', 'Sistemde kayıtlı değil — eski kod veya yeni ürün olabilir', '—', qty, '—', 'BULUNAMADI', '—', '—', 'BULUNAMADI']);
+      return;
     }
     const fiyatIsk = getItemFiyat({ prod, kar, vade, mod, isk: itemIsk, firmaFiyat, ozelNetFiyat });
     const itemMod = mod || 'iskonto';
     const netParamLabel = itemMod === 'ozel-net' ? 'ÖZEL ÜRETİM' : itemMod === 'firma' ? 'ÖZEL' : itemMod === 'net' ? 'NET' : ((itemIsk || 'liste') === 'liste' ? 'Liste' : (itemIsk || '').replace('n','%') + 'N');
     const brText = brLabel[prod.br] || prod.br;
-    return {
-      'Ürün Kodu': prod.kod,
-      'Ürün Adı': prod.ad,
-      'Birim': brText,
-      'Adet': qty,
-      'Liste Fiyatı (₺)': prod.liste,
-      'İskonto / Fiyat Tipi': netParamLabel,
-      'Birim Fiyat (₺)': fiyatIsk,
-      'Satır Toplamı (₺)': parseFloat((fiyatIsk * qty).toFixed(2)),
-      'Durum': 'Teklif Sepetinde'
-    };
+    aoa.push([prod.kod, prod.ad, brText, qty, prod.liste, netParamLabel, fiyatIsk, null, 'Teklif Sepetinde']);
   });
 
-  const genel = teklifItems.reduce((s, item) => s + getItemFiyat(item) * item.qty, 0);
-  const genelKdv = parseFloat((genel * 1.20).toFixed(2));
+  lastDataRow = aoa.length; // son ürün satırının 1-indexed numarası
+  aoa.push([]); // boş satır
+  const toplamRow = aoa.length + 1; // genel toplam satır no
+  aoa.push(['', '', '', '', '', '', 'Genel Toplam (KDV Hariç) ₺', null, '']);
+  const kdvRow = aoa.length + 1;
+  aoa.push(['', '', '', '', '', '', "KDV'li Genel Toplam (%20) ₺", null, '']);
 
-  rows.push({});
-  rows.push({ 'Ürün Adı': 'Genel Toplam (KDV Hariç) ₺', 'Satır Toplamı (₺)': parseFloat(genel.toFixed(2)) });
-  rows.push({ 'Ürün Adı': 'KDV\'li Genel Toplam (%20) ₺', 'Satır Toplamı (₺)': genelKdv });
+  const wsTeklif = XLSX.utils.aoa_to_sheet(aoa);
 
-  const wsTeklif = XLSX.utils.json_to_sheet(rows);
+  // Satır Toplamı (H sütunu) = Adet(D) * Birim Fiyat(G) formülü — bulunamadı satırları hariç
+  // Not: SheetJS'in xlsx export'unda formül hücresi yazılabilmesi için 'v' (önbellek değeri) de gerekli.
+  let genelToplamCache = 0;
+  for (let r = firstDataRow; r <= lastDataRow; r++) {
+    const rowArr = aoa[r - 1];
+    const isBulunamadi = rowArr[8] === 'BULUNAMADI';
+    if (isBulunamadi) continue;
+    const qtyVal = rowArr[3];
+    const fiyatVal = rowArr[6];
+    const satirToplam = parseFloat((qtyVal * fiyatVal).toFixed(2));
+    genelToplamCache += satirToplam;
+    wsTeklif['H' + r] = { t: 'n', f: `D${r}*G${r}`, v: satirToplam };
+  }
+  genelToplamCache = parseFloat(genelToplamCache.toFixed(2));
+  // Genel Toplam = ürün satırlarının H sütunu toplamı
+  if (lastDataRow >= firstDataRow) {
+    wsTeklif['H' + toplamRow] = { t: 'n', f: `SUM(H${firstDataRow}:H${lastDataRow})`, v: genelToplamCache };
+  } else {
+    wsTeklif['H' + toplamRow] = { t: 'n', v: 0 };
+  }
+  // KDV'li Toplam = Genel Toplam * 1.20
+  wsTeklif['H' + kdvRow] = { t: 'n', f: `H${toplamRow}*1.2`, v: parseFloat((genelToplamCache * 1.2).toFixed(2)) };
+
   wsTeklif['!cols'] = [
     { wch: 18 }, { wch: 42 }, { wch: 8 }, { wch: 12 },
     { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 20 }, { wch: 18 }
