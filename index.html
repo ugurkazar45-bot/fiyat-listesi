@@ -3560,8 +3560,14 @@ function getTumUrunlerAdListesi() {
 
 const SIPARIS_STOP_WORDS = new Set(['ve','ile','için','adet','ad','ürün','ürünü','kod','kodu','adı','miktar','toplam','tl','fiyat','sipariş','no']);
 
+// Yazım farklılıklarını (çift harf, vb.) tolere etmek için ardışık tekrar eden
+// harfleri teke indirger — "raffiks" ve "rafiks" aynı normalize sonucu verir.
+function harfTekrarSadelestir(s) {
+  return s.replace(/(.)\1+/g, '$1');
+}
+
 // Satırda kod bulunamazsa ürün adının geçtiği kelimelerden en olası ürünü bul
-function urunAdiIleBul(satir) {
+function urunAdiIleBul(satir, adayHavuzu) {
   const temiz = satir
     .toLowerCase('tr-TR')
     .replace(/\d{3}-\d{2}-\d{2}-\d{3}/g, ' ')
@@ -3569,12 +3575,14 @@ function urunAdiIleBul(satir) {
     .trim();
   const kelimeler = temiz.split(/\s+/).filter(w => w.length > 2 && !SIPARIS_STOP_WORDS.has(w));
   if (kelimeler.length < 2) return null;
+  const kelimelerSade = kelimeler.map(harfTekrarSadelestir);
 
+  const havuz = adayHavuzu || getTumUrunlerAdListesi();
   let enIyi = null, enIyiSkor = 0;
-  for (const p of getTumUrunlerAdListesi()) {
-    const ad = p.ad.toLowerCase('tr-TR');
+  for (const p of havuz) {
+    const ad = harfTekrarSadelestir(p.ad.toLowerCase('tr-TR'));
     let skor = 0;
-    for (const k of kelimeler) { if (ad.includes(k)) skor++; }
+    for (const k of kelimelerSade) { if (ad.includes(k)) skor++; }
     if (skor > enIyiSkor) { enIyiSkor = skor; enIyi = p; }
   }
   // Yanlış eşleşmeyi önlemek için: en az 2 kelime tutmalı VE kelimelerin ~%65'i eşleşmeli
@@ -3609,7 +3617,22 @@ function parseSiparisMetni(metin) {
       }
     }
 
-    // 3) Hâlâ yoksa ürün adından anlamaya çalış
+    // 2b) Eksik/kısmi Mesan kodu (örn. "103-08-02", son "-XXX" grubu unutulmuş).
+    // O ana koda ait tüm varyantlar arasından, satırdaki ürün adıyla en iyi eşleşen seçilir;
+    // tek varyant varsa doğrudan o kullanılır.
+    if (!kod) {
+      const anaKodMatch = satir.match(/\b(\d{3}-\d{2}-\d{2})\b(?!-\d)/);
+      if (anaKodMatch) {
+        const adaylar = findByAnaKod(anaKodMatch[1]);
+        if (adaylar.length === 1) {
+          kod = adaylar[0].kod;
+        } else if (adaylar.length > 1) {
+          kod = urunAdiIleBul(satir, adaylar) || adaylar[0].kod;
+        }
+      }
+    }
+
+    // 3) Hâlâ yoksa ürün adından anlamaya çalış (tüm katalogda)
     if (!kod) kod = urunAdiIleBul(satir);
 
     if (!kod) continue; // bu satırda ürün tespit edilemedi
