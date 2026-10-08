@@ -6,7 +6,8 @@
 <title>Fiyat Listesi Asistanı</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
@@ -1595,6 +1596,26 @@
   .masraf-satir-tutar.borc { color: var(--accent); }
   .masraf-satir-tutar.alacak { color: var(--red); }
   .masraf-satir-aksiyon { background: var(--surface); width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; color: var(--text2); }
+  /* ── Avans ekstresi (V20) ── */
+  .mx-bulut { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; color: var(--text2); background: var(--surface); cursor: pointer; }
+  .mx-bulut-nokta { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: #9AA0A6; }
+  .mx-bulut-nokta.yesil { background: #2E7D32; }
+  .mx-bulut-nokta.turuncu { background: #E08A00; }
+  .mx-bulut-nokta.kirmizi { background: var(--red); }
+  .mx-ozet { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 6px; font-size: 11px; color: var(--text2); }
+  .mx-ozet b { color: var(--text); font-weight: 600; }
+  .mx-form-baslik { font-size: 11px; color: var(--text2); font-weight: 700; }
+  #mxForm.fis .mx-form-baslik { color: var(--red); }
+  .masraf-form input[type="date"], .masraf-form select { padding: 9px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 16px; font-family: inherit; min-height: 40px; }
+  .masraf-form input { font-size: 16px; }
+  .mx-bildirim { font-size: 12px; color: #2E7D32; font-weight: 600; min-height: 0; max-height: 0; overflow: hidden; transition: max-height .2s; }
+  .mx-bildirim.show { max-height: 30px; }
+  .masraf-liste { max-height: 46vh; }
+  .mx-durum { font-size: 11px; }
+  .mx-durum.hata { color: var(--red); }
+  .masraf-satir.mx-silindi { opacity: .5; }
+  .masraf-satir.mx-silindi .masraf-satir-aciklama, .masraf-satir.mx-silindi .masraf-satir-tutar { text-decoration: line-through; }
+  .masraf-satir.mx-acilis .masraf-satir-aciklama { font-weight: 700; }
 
   .net-picker-box { background: var(--surface); border-color: var(--border); box-shadow: 0 12px 40px rgba(0,0,0,.18); }
   .net-picker-title { font-size: 15px; font-weight: 600; }
@@ -1916,52 +1937,65 @@
 </div>
 
 
-<!-- Günlük Masraf Modalı -->
+<!-- Günlük Masraf Modalı (V20 — avans ekstresi, Firestore + yerel kuyruk) -->
 <div class="masraf-overlay" id="masrafOverlay" onclick="closeMasrafOnOverlay(event)">
   <div class="masraf-modal">
-    <div class="siparis-modal-title">Günlük Masraf Takibi</div>
-    <div class="masraf-bakiye-kutu">
-      <div class="masraf-bakiye-label">Kalan Avans</div>
-      <div class="masraf-bakiye-deger" id="masrafBakiyeDeger">0 ₺</div>
+    <div class="siparis-modal-title">Avans Ekstresi</div>
+
+    <div class="mx-bulut" id="mxBulut" onclick="mxBulutTikla()">
+      <span class="mx-bulut-nokta" id="mxBulutNokta"></span>
+      <span id="mxBulutYazi">Bulut durumu kontrol ediliyor…</span>
     </div>
 
-    <div class="masraf-aksiyon-row">
-      <button class="masraf-aksiyon-btn avans" onclick="toggleMasrafForm('avans')">+ Avans Ekle</button>
-      <button class="masraf-aksiyon-btn fis" onclick="toggleMasrafForm('fis')">− Fiş Ekle</button>
-    </div>
-
-    <div class="masraf-form" id="masrafFormAvans" style="display:none;">
-      <input type="number" id="avansTutar" placeholder="Alınan avans tutarı (₺)" inputmode="decimal" step="0.01">
-      <input type="text" id="avansAciklama" placeholder="Açıklama (opsiyonel, örn: Banka / Elden)">
-      <button onclick="avansEkleKaydet()">Avansı Kaydet</button>
-    </div>
-
-    <div class="masraf-form" id="masrafFormFis" style="display:none;">
-      <input type="number" id="fisTutar" placeholder="Fiş tutarı (₺)" inputmode="decimal" step="0.01">
-      <input type="text" id="fisAciklama" placeholder="Açıklama (örn: Fiş No 5 Kardeşler Lokantası)">
-      <button onclick="fisEkleKaydet()">Fişi Kaydet</button>
-    </div>
-
-    <div class="masraf-form" id="masrafDuzenleForm" style="display:none;">
-      <div style="font-size:11px;color:var(--text2);font-weight:700;">Kaydı Düzenle</div>
-      <select id="masrafDuzenleTipSecim" style="padding:9px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;">
-        <option value="borc">Avans (giren)</option>
-        <option value="alacak">Fiş (çıkan)</option>
-      </select>
-      <input type="text" id="masrafDuzenleTarih" placeholder="Tarih (gg.aa.yyyy)">
-      <input type="text" id="masrafDuzenleAciklama" placeholder="Açıklama">
-      <input type="number" id="masrafDuzenleTutar" placeholder="Tutar (₺)" inputmode="decimal" step="0.01">
+    <div class="masraf-form" id="mxGirisForm" style="display:none;">
+      <div class="mx-form-baslik">Buluta bağlan (her cihazda bir kez)</div>
+      <input type="email" id="mxGirisEmail" placeholder="E-posta" autocomplete="username">
+      <input type="password" id="mxGirisSifre" placeholder="Şifre (en az 6 karakter)" autocomplete="current-password">
       <div style="display:flex;gap:6px;">
-        <button style="flex:1;" onclick="masrafDuzenleKaydet()">Kaydet</button>
-        <button style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="masrafDuzenleIptal()">İptal</button>
+        <button style="flex:1;" onclick="mxGirisYap()">Giriş yap</button>
+        <button style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="mxHesapOlustur()">İlk kez: hesap oluştur</button>
       </div>
     </div>
 
-    <div class="masraf-liste-baslik">Son İşlemler <span id="masrafToplamKayit" style="color:var(--text2);font-weight:400;"></span></div>
+    <div class="masraf-bakiye-kutu">
+      <div class="masraf-bakiye-label">Kalan Avans</div>
+      <div class="masraf-bakiye-deger" id="masrafBakiyeDeger">0 ₺</div>
+      <div class="mx-ozet" id="mxOzet"></div>
+    </div>
+
+    <div class="masraf-aksiyon-row">
+      <button class="masraf-aksiyon-btn avans" onclick="mxFormAc('avans')">+ Avans Ekle</button>
+      <button class="masraf-aksiyon-btn fis" onclick="mxFormAc('fis')">− Fiş Ekle</button>
+    </div>
+
+    <div class="masraf-form" id="mxForm" style="display:none;">
+      <div class="mx-form-baslik" id="mxFormBaslik">Fiş Ekle</div>
+      <select id="mxFormTip" style="display:none;">
+        <option value="fis">Fiş (avanstan düşer)</option>
+        <option value="avans">Avans (avansa eklenir)</option>
+      </select>
+      <input type="date" id="mxFormTarih">
+      <input type="text" id="mxFormTutar" placeholder="Tutar (₺) — örn: 245,50" inputmode="decimal" autocomplete="off">
+      <input type="text" id="mxFormAciklama" placeholder="Açıklama (örn: Fiş No 5 Kardeşler Lokantası)" autocomplete="off">
+      <div style="display:flex;gap:6px;">
+        <button style="flex:1;" id="mxFormKaydetBtn" onclick="mxFormKaydet()">Kaydet</button>
+        <button style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="mxFormKapat()">Vazgeç</button>
+      </div>
+      <div class="mx-bildirim" id="mxBildirim"></div>
+    </div>
+
+    <div class="masraf-liste-baslik" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>Ekstre <span id="masrafToplamKayit" style="color:var(--text2);font-weight:400;"></span></span>
+      <label style="font-weight:400;display:flex;align-items:center;gap:4px;cursor:pointer;">
+        <input type="checkbox" id="mxSilinenleriGoster" onchange="renderMasrafListesi()"> Silinenleri göster
+      </label>
+    </div>
     <div class="masraf-liste" id="masrafListe"></div>
 
-    <button class="siparis-analiz-btn" onclick="masrafExcelAktar()">Excel'e Aktar (Hesap Ekstresi)</button>
-    <button class="siparis-analiz-btn" style="background:transparent;border:1px solid var(--border);color:var(--text2);" onclick="masrafGecmisiSifirla()">Geçmişi Doğrulanmış Veriyle Eşitle</button>
+    <div style="display:flex;gap:6px;">
+      <button class="siparis-analiz-btn" style="flex:1;" onclick="mxPdfAktar()">PDF Ekstre</button>
+      <button class="siparis-analiz-btn" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--text);" onclick="mxCsvAktar()">CSV (Excel)</button>
+    </div>
   </div>
 </div>
 
@@ -3918,115 +3952,312 @@ function onTeklifQtyBlur(el) {
 let _siparisAnalizSonuc = []; // analiz edilmiş satırlar
 
 
-// ─── GÜNLÜK MASRAF TAKİBİ ────────────────────────────────────────────────────
-// Uğur Kazar'ın iş avansı hesap ekstresi (gerçek geçmiş veri) — ilk yüklemede
-// tarayıcıya (localStorage) bir kez aktarılır, sonrasında üstüne eklenir.
-// Ayrıca Firebase Realtime Database'e canlı yedeklenir — cihaz değişse,
-// önbellek temizlense bile veri bulutta kalır.
+// ─── AVANS EKSTRESİ (MASRAF) — V20 ───────────────────────────────────────────
+// Uğur Kazar'ın şirkete karşı iş avansı ekstresi. Başlangıç: 16.09.2026, 9.231,86 ₺.
+// • Her avans / fiş AYRI bir kayıttır (benzersiz id). Tüm liste asla toplu üzerine yazılmaz.
+// • Kayıt önce telefona (localStorage) yazılır, sonra Firestore'a tek tek gönderilir.
+//   İnternet yoksa "bekliyor" olarak kalır; bağlantı gelince otomatik gönderilir.
+// • Silme = "silindi" işareti (geri alınabilir). Firestore kuralları gerçek silmeyi reddeder.
+// • Bakiye saklanmaz; her seferinde kayıtlardan hesaplanır (açılış + avanslar − fişler).
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDLww0MFA8hOz5ktxRfIZb-QsS8zGXe3Ak",
-  authDomain: "masraf-listesi.firebaseapp.com",
-  databaseURL: "https://masraf-listesi-default-rtdb.firebaseio.com",
-  projectId: "masraf-listesi",
-  storageBucket: "masraf-listesi.firebasestorage.app",
-  messagingSenderId: "794895549797",
-  appId: "1:794895549797:web:b613d095f2617fe58f4d8c"
+const MX_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCA-O2gYqT-y5NE53_0VCUZIoo9dUncMBA",
+  authDomain: "mesan-masraf-ekstre.firebaseapp.com",
+  projectId: "mesan-masraf-ekstre",
+  storageBucket: "mesan-masraf-ekstre.firebasestorage.app",
+  messagingSenderId: "235089185265",
+  appId: "1:235089185265:web:d3fce2f2a9f72a4b7b5c50"
+};
+const MX_SAHIP_EMAIL = 'ugurkazar45@gmail.com';
+const MX_KOLEKSIYON = 'hareketler';
+const MX_DEPO_ANAHTAR = 'avansEkstresi_v20';
+const MX_BASLANGIC_TARIHI = '2026-09-16';
+const MX_ACILIS = {
+  id: 'acilis-2026-09-16', tip: 'acilis', tarih: MX_BASLANGIC_TARIHI,
+  aciklama: 'AÇILIŞ — BAŞLANGIÇ AVANSI', tutar: 9231.86,
+  olusturma: 1789516800000, guncelleme: 1789516800000, silindi: false
 };
 
-let _fbDb = null;
-let _fbHazir = false;
-try {
-  if (window.firebase) {
-    firebase.initializeApp(firebaseConfig);
-    _fbDb = firebase.database();
-    _fbHazir = true;
-  }
-} catch (e) {
-  console.warn('[Firebase] başlatılamadı, sadece yerel (localStorage) kayıt kullanılacak:', e);
-}
+let mxKayitlar = {};          // id -> kayıt (yerel alanlar "_" ile başlar: _bekliyor, _hata)
+let mxDb = null, mxAuth = null, mxKullanici = null, mxDinleyici = null;
+let mxSdkVar = false;
+let mxIlkSenkron = false;     // sunucudan ilk tam liste gelmeden bekleyenler gönderilmez
+let mxBulutHata = '';
+let mxDuzenlenenId = null;
+const mxGonderimde = new Set();
 
-function masrafBuluttanCek() {
-  if (!_fbHazir) return;
-  _fbDb.ref('masrafKayitlari').once('value')
-    .then(snap => {
-      const bulut = snap.val();
-      if (bulut && Array.isArray(bulut) && bulut.length > 0) {
-        // Bulutta veri var — o, en güncel/gerçek kaynak kabul edilir
-        masrafKayitlari = bulut;
-        try { localStorage.setItem('masrafKayitlari', JSON.stringify(masrafKayitlari)); } catch (e) {}
-      } else {
-        // Bulut boş (ilk kurulum) — mevcut yerel veriyi buluta yükle
-        _fbDb.ref('masrafKayitlari').set(masrafKayitlari).catch(e => console.warn('[Firebase] ilk yükleme başarısız:', e));
-      }
-      if (typeof renderMasrafListesi === 'function') renderMasrafListesi();
-    })
-    .catch(e => console.warn('[Firebase] buluttan okunamadı, yerel veri kullanılıyor:', e));
-}
-
-function masrafYukle() {
+// ── Yerel depo ──
+function mxDepoOku() {
   try {
-    const kayitli = localStorage.getItem('masrafKayitlari');
-    if (kayitli) {
-      masrafKayitlari = JSON.parse(kayitli);
-    } else {
-      // İlk açılış — geçmiş veriyi tohum olarak yükle
-      masrafKayitlari = MASRAF_GECMIS.slice();
-      masrafKaydet();
-    }
+    const s = localStorage.getItem(MX_DEPO_ANAHTAR);
+    if (s) mxKayitlar = JSON.parse(s) || {};
   } catch (e) {
-    console.warn('[Masraf] localStorage okunamadı, geçmiş veriden başlanıyor:', e);
-    masrafKayitlari = MASRAF_GECMIS.slice();
+    console.warn('[Masraf] yerel kayıtlar okunamadı:', e);
   }
-  // Sayfa her açıldığında buluttaki güncel veriyi de kontrol et (arka planda, beklemeden)
-  masrafBuluttanCek();
+  if (!mxKayitlar[MX_ACILIS.id]) mxKayitlar[MX_ACILIS.id] = { ...MX_ACILIS, _bekliyor: true };
 }
 
-function masrafKaydet() {
+function mxDepoYaz() {
   try {
-    localStorage.setItem('masrafKayitlari', JSON.stringify(masrafKayitlari));
+    localStorage.setItem(MX_DEPO_ANAHTAR, JSON.stringify(mxKayitlar));
+    return true;
   } catch (e) {
-    console.warn('[Masraf] localStorage yazılamadı:', e);
-  }
-  if (_fbHazir) {
-    _fbDb.ref('masrafKayitlari').set(masrafKayitlari)
-      .catch(e => console.warn('[Firebase] buluta yazılamadı (yerelde kayıtlı kaldı):', e));
+    alert('Kayıt telefon hafızasına yazılamadı!\n\nTarayıcı gizli modda olabilir. Lütfen normal sekmede açın.');
+    return false;
   }
 }
 
-
-const MASRAF_GECMIS = [{"no":1,"tarih":"01.01.2025","aciklama":"2025 AÇILIŞ FİŞİ","borc":852.4,"alacak":0,"bakiye":852.4},{"no":2,"tarih":"02.01.2025","aciklama":"FİŞ NO 5 SEBAHATTİN KAHRAMAN GARDEN ÇOTANAK","borc":0,"alacak":265.0,"bakiye":587.4},{"no":3,"tarih":"02.01.2025","aciklama":"FİŞ NO 3 ALI NEVZAT CON","borc":0,"alacak":750.0,"bakiye":-162.6},{"no":4,"tarih":"03.01.2025","aciklama":"FİŞ NO 7 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":95.0,"bakiye":-257.6},{"no":5,"tarih":"03.01.2025","aciklama":"FİŞ NO 40 BÜNYAMİN ALTIN ALTIN KARDEŞLER","borc":0,"alacak":340.0,"bakiye":-597.6},{"no":6,"tarih":"06.01.2025","aciklama":"FİŞ NO 18 EŞSİZ DÖNER GIDA SAN.TİC.","borc":0,"alacak":405.0,"bakiye":-1002.6},{"no":7,"tarih":"07.01.2025","aciklama":"FİŞ NO 8 SEVAL TEKİNKÖK ARNAVUT LOKANTASI","borc":0,"alacak":270.0,"bakiye":-1272.6},{"no":8,"tarih":"10.01.2025","aciklama":"FİŞ NO 43 BÜNYAMİN ALTIN ALTIN KARDEŞLER","borc":0,"alacak":345.0,"bakiye":-1617.6},{"no":9,"tarih":"13.01.2025","aciklama":"FİŞ NO 7 MANULAŞ MANİSA ULAŞIM SAN.VE TİC.A.Ş.","borc":0,"alacak":285.0,"bakiye":-1902.6},{"no":10,"tarih":"17.01.2025","aciklama":"FİŞ NO: 24 AYGÜN ZORLU DÖNERCİ AYGÜN USTA","borc":0,"alacak":480.0,"bakiye":-2382.6},{"no":11,"tarih":"21.01.2025","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":2617.4},{"no":12,"tarih":"21.01.2025","aciklama":"FİŞ NO: 6 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":95.0,"bakiye":2522.4},{"no":13,"tarih":"10.02.2025","aciklama":"FİŞ NO 4 UMUT GÜNEŞ DÜRÜMCÜ ŞERİF","borc":0,"alacak":160.0,"bakiye":2362.4},{"no":14,"tarih":"10.02.2025","aciklama":"FİŞ NO 153 ADAM C AKY.MAR.VE TAŞ.A.Ş.","borc":0,"alacak":200.0,"bakiye":2162.4},{"no":15,"tarih":"11.02.2025","aciklama":"FİŞ NO: 37 ANEMON TURİZM İNŞ.TİC.A.Ş.","borc":0,"alacak":500.0,"bakiye":1662.4},{"no":16,"tarih":"11.02.2025","aciklama":"HAYRİYE BORAZAN  FİŞ NO 22","borc":0,"alacak":225.0,"bakiye":1437.4},{"no":17,"tarih":"12.02.2025","aciklama":"FİŞ NO 17 SEVAL TEKİNKÖK ARNAVUT LOKANTASI","borc":0,"alacak":300.0,"bakiye":1137.4},{"no":18,"tarih":"13.02.2025","aciklama":"BÜNYAMİN ALTIN ALTIN KARDEŞLER 30  FİŞ NO","borc":0,"alacak":400.0,"bakiye":737.4},{"no":19,"tarih":"15.02.2025","aciklama":"FİŞ NO MANULAŞ MANİSA ULAŞIM SAN. VE TİC.A. 34","borc":0,"alacak":95.0,"bakiye":642.4},{"no":20,"tarih":"17.02.2025","aciklama":"139 KÖFTECİ YUSUF HAZ. SAN.TİC.A.Ş. NO FİŞ","borc":0,"alacak":230.0,"bakiye":412.4},{"no":21,"tarih":"18.02.2025","aciklama":"22 SEVAL TEKİNKÖK ARNAVUT LOKANTASI NO FİŞ","borc":0,"alacak":210.0,"bakiye":202.4},{"no":22,"tarih":"19.02.2025","aciklama":"7 İLKNUR CİRİK EGE PİDE PİZZA & KEBAP FİŞ NO","borc":0,"alacak":230.0,"bakiye":-27.6},{"no":23,"tarih":"21.02.2025","aciklama":"FİŞ NO: 66 BÜNYAMİN ALTIN ALTIN KARDEŞLER LOK","borc":0,"alacak":345.0,"bakiye":-372.6},{"no":24,"tarih":"24.02.2025","aciklama":"FİŞ NO 2 HÜSEYİN TÜKENMEZ DEMİROĞLU BAKLAVAL","borc":0,"alacak":500.0,"bakiye":-872.6},{"no":25,"tarih":"24.02.2025","aciklama":"FİŞ NO 4 AYŞE BOĞAZDERE KONYALI ALI USTA","borc":0,"alacak":225.0,"bakiye":-1097.6},{"no":26,"tarih":"25.02.2025","aciklama":"MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş. FİŞ NO 2","borc":0,"alacak":75.0,"bakiye":-1172.6},{"no":27,"tarih":"25.02.2025","aciklama":"FİŞ NO: 6 RABIA KAPLAN PRATİK KAVURMACI","borc":0,"alacak":260.0,"bakiye":-1432.6},{"no":28,"tarih":"26.02.2025","aciklama":"FİŞ NO 2 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":95.0,"bakiye":-1527.6},{"no":29,"tarih":"26.02.2025","aciklama":"FİŞ NO: 9 HAYRİYE BORAZAN","borc":0,"alacak":230.0,"bakiye":-1757.6},{"no":30,"tarih":"27.02.2025","aciklama":"FİŞ NO 12 SULTAN YILDIZ BÜFE İŞLETMESİ","borc":0,"alacak":500.0,"bakiye":-2257.6},{"no":31,"tarih":"28.02.2025","aciklama":"FİŞ NO: 58 BÜNYAMİN ALTIN ALTIN KARDEŞLER LO","borc":0,"alacak":360.0,"bakiye":-2617.6},{"no":32,"tarih":"04.03.2025","aciklama":"FİŞ NO: 6 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":95.0,"bakiye":-2712.6},{"no":33,"tarih":"08.03.2025","aciklama":"FİŞ NO 1 METİN YENİKAYA BUSE OTO YIKAMA","borc":0,"alacak":500.0,"bakiye":-3212.6},{"no":34,"tarih":"11.03.2025","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":4000.0,"alacak":0,"bakiye":787.4},{"no":35,"tarih":"14.03.2025","aciklama":"FİŞ NO 10 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":95.0,"bakiye":692.4},{"no":36,"tarih":"28.03.2025","aciklama":"FİŞ NO 13 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":95.0,"bakiye":597.4},{"no":37,"tarih":"02.04.2025","aciklama":"FİŞ NO 56 KÖFTECİ YUSUF HAZ.SAN.TİC.A.Ş.","borc":0,"alacak":290.0,"bakiye":307.4},{"no":38,"tarih":"03.04.2025","aciklama":"FİŞ NO 2 CEMİLE KIYAK URFA KEBAP","borc":0,"alacak":430.0,"bakiye":-122.6},{"no":39,"tarih":"04.04.2025","aciklama":"FİŞ NO RABIA KAPLAN PRATİK KAVURMACI 3","borc":0,"alacak":320.0,"bakiye":-442.6},{"no":40,"tarih":"07.04.2025","aciklama":"FİŞ NO  15 MUSTAFA KABAER MMSE DURUMUS","borc":0,"alacak":200.0,"bakiye":-642.6},{"no":41,"tarih":"08.04.2025","aciklama":"1 CESUR LASTİK LOJ.SAN.TİC.LTD.ŞTİ. NO FİŞ","borc":0,"alacak":600.0,"bakiye":-1242.6},{"no":42,"tarih":"08.04.2025","aciklama":"1 SEBAHATTİN KAHRAMAN GARDEN ÇOTANAK NO FİŞ","borc":0,"alacak":350.0,"bakiye":-1592.6},{"no":43,"tarih":"09.04.2025","aciklama":"5 FASLA KILIÇ SIFIR BİR OCAKBAŞI FİŞ NO","borc":0,"alacak":190.0,"bakiye":-1782.6},{"no":44,"tarih":"11.04.2025","aciklama":"FİŞ NO: 6 BÜNYAMİN ALTIN ALTIN KARDEŞLER LOKA","borc":0,"alacak":345.0,"bakiye":-2127.6},{"no":45,"tarih":"14.04.2025","aciklama":"FİŞ NO 12 AKHİSAR CAN KÖFTE SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":260.0,"bakiye":-2387.6},{"no":46,"tarih":"15.04.2025","aciklama":"FİŞ NO 7 BER RESTORAN","borc":0,"alacak":220.0,"bakiye":-2607.6},{"no":47,"tarih":"21.04.2025","aciklama":"FİŞ NO: 5 SEBAHATTİN KAHRAMAN GARDEN ÇOTANAK","borc":0,"alacak":415.0,"bakiye":-3022.6},{"no":48,"tarih":"22.04.2025","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":1977.4},{"no":49,"tarih":"22.04.2025","aciklama":"FİŞ NO 20 EŞSİZ DÖNER SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":325.0,"bakiye":1652.4},{"no":50,"tarih":"24.04.2025","aciklama":"FİŞ NO 11 MUZAFFER YİĞİT FATİH ÇAĞ KEBAP SAL","borc":0,"alacak":500.0,"bakiye":1152.4},{"no":51,"tarih":"25.04.2025","aciklama":"FİŞ NO 16 EŞSİZ DÖNER SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":285.0,"bakiye":867.4},{"no":52,"tarih":"28.04.2025","aciklama":"FİŞ NO 11 SEVAL TEKİNKÖK ARNAVUT LOKANTASI","borc":0,"alacak":390.0,"bakiye":477.4},{"no":53,"tarih":"29.04.2025","aciklama":"FİŞ NO 20 TUZLOOK GIDA SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":380.0,"bakiye":97.4},{"no":54,"tarih":"30.04.2025","aciklama":"FİŞ NO: 3 MUSTAFA KABAER MMSE DÜRÜMOS","borc":0,"alacak":200.0,"bakiye":-102.6},{"no":55,"tarih":"02.05.2025","aciklama":"FİŞ NO 6 GÜLCAN ÖZSELYAN DAMAK TADI","borc":0,"alacak":370.0,"bakiye":-472.6},{"no":56,"tarih":"05.05.2025","aciklama":"FİŞ NO 26 SEVAL TEKİNKÖK ARNAVUT LOKANTASI","borc":0,"alacak":380.0,"bakiye":-852.6},{"no":57,"tarih":"06.05.2025","aciklama":"NO: 77 BÜNYAMİN ALTIN ALTIN KARDEŞLER LOK FİŞ","borc":0,"alacak":380.0,"bakiye":-1232.6},{"no":58,"tarih":"06.05.2025","aciklama":"NO FİŞ  2 MURAT KÖKTUT OTO DİZAYN","borc":0,"alacak":550.0,"bakiye":-1782.6},{"no":59,"tarih":"06.05.2025","aciklama":"FİŞ NO 6 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":110.0,"bakiye":-1892.6},{"no":60,"tarih":"07.05.2025","aciklama":"FİŞ NO 15 MUSTAFA KABAER MMSE DURUMOS","borc":0,"alacak":200.0,"bakiye":-2092.6},{"no":61,"tarih":"08.05.2025","aciklama":"FİŞ NO 6 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":-2232.6},{"no":62,"tarih":"08.05.2025","aciklama":"FİŞ NO: 71 KÖFTECİ YUSUF SAN.TİC.A.Ş.","borc":0,"alacak":290.0,"bakiye":-2522.6},{"no":63,"tarih":"09.05.2025","aciklama":"FİŞ NO 12 SEVAL TEKİNKÖK -ARNAVUT LOKANTASI","borc":0,"alacak":450.0,"bakiye":-2972.6},{"no":64,"tarih":"09.05.2025","aciklama":"FİŞ NO: 9 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":-3112.6},{"no":65,"tarih":"12.05.2025","aciklama":"FİŞ NO 10 SEVAL TEKİNKÖK ARNAVUT LOKANTASI","borc":0,"alacak":200.0,"bakiye":-3312.6},{"no":66,"tarih":"13.05.2025","aciklama":"ΒΑΝΚA (BANKA DİĞER ÖDEMELER)","borc":7000.0,"alacak":0,"bakiye":3687.4},{"no":67,"tarih":"13.05.2025","aciklama":"EŞSİZ DÖNER GIDA SAN.TİC.LTD.ŞTİ. 20 FİŞ NO","borc":0,"alacak":335.0,"bakiye":3352.4},{"no":68,"tarih":"14.05.2025","aciklama":"MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş. 11 FİŞ NO","borc":0,"alacak":140.0,"bakiye":3212.4},{"no":69,"tarih":"14.05.2025","aciklama":"SEBAHATTİN KAHRAMAN GARDEN ÇOTANAK 3 FİŞ NO","borc":0,"alacak":310.0,"bakiye":2902.4},{"no":70,"tarih":"15.05.2025","aciklama":"NO AYGÜN ZORLU DÖNER SAN.TİC.LTD.ŞTİ. 4 FİŞ","borc":0,"alacak":400.0,"bakiye":2502.4},{"no":71,"tarih":"16.05.2025","aciklama":"FİŞ NO DÜRÜMCÜ SAİT USTA 19","borc":0,"alacak":180.0,"bakiye":2322.4},{"no":72,"tarih":"16.05.2025","aciklama":"MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş. 17 NO FİŞ","borc":0,"alacak":140.0,"bakiye":2182.4},{"no":73,"tarih":"20.05.2025","aciklama":"NO FİŞ 21 MELEK DENİZLİ DÜRÜMCÜ YUSUF USTA","borc":0,"alacak":190.0,"bakiye":1992.4},{"no":74,"tarih":"21.05.2025","aciklama":"FİŞ 5 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş. NO","borc":0,"alacak":140.0,"bakiye":1852.4},{"no":75,"tarih":"21.05.2025","aciklama":"OSMAN KORKMAZ OSMAN USTANIN YERİ 21 NO FİŞ","borc":0,"alacak":330.0,"bakiye":1522.4},{"no":76,"tarih":"22.05.2025","aciklama":"MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş. 13 FİŞ NO :","borc":0,"alacak":140.0,"bakiye":1382.4},{"no":77,"tarih":"23.05.2025","aciklama":"8 NO FİŞ AŞKINLAR RESTORAN SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":495.0,"bakiye":887.4},{"no":78,"tarih":"26.05.2025","aciklama":"NO 4 HAYRİYE BORAZAN FİŞ","borc":0,"alacak":175.0,"bakiye":712.4},{"no":79,"tarih":"27.05.2025","aciklama":"121 KÖFTECİ YUSUF SAN.TİC.A.Ş. FİŞ NO","borc":0,"alacak":275.0,"bakiye":437.4},{"no":80,"tarih":"28.05.2025","aciklama":"NO FİŞ 13 ÖZLENEN PİDE SALONU TUNAHAN KAYALI","borc":0,"alacak":275.0,"bakiye":162.4},{"no":81,"tarih":"29.05.2025","aciklama":"NO FİŞ 11 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":22.4},{"no":82,"tarih":"29.05.2025","aciklama":"NO FİŞ 82 ALTIN KARDEŞLER LOKANTASI BÜNYAMİN","borc":0,"alacak":440.0,"bakiye":-417.6},{"no":83,"tarih":"30.05.2025","aciklama":"9 HAYRİYE BORAZAN FİŞ NO:","borc":0,"alacak":235.0,"bakiye":-652.6},{"no":84,"tarih":"02.06.2025","aciklama":"3 GÜLCAN ÖZSELYAN DAMAK TADI FİŞ NO","borc":0,"alacak":250.0,"bakiye":-902.6},{"no":85,"tarih":"03.06.2025","aciklama":"NO: FİŞ 6 SEVAL TEKİNKÖK ARNAVUT LOKANTASI","borc":0,"alacak":400.0,"bakiye":-1302.6},{"no":86,"tarih":"04.06.2025","aciklama":"FİŞ NO 319 MOS LOJİSTİK HİZMETLERİ A.Ş.","borc":0,"alacak":195.0,"bakiye":-1497.6},{"no":87,"tarih":"04.06.2025","aciklama":"5 METİN YENİKAYA BUSE OTO YIKAMA FİŞ NO :","borc":0,"alacak":500.0,"bakiye":-1997.6},{"no":88,"tarih":"10.06.2025","aciklama":"FİŞ NO 8 İLKNUR CİRİK EGE PİDE","borc":0,"alacak":400.0,"bakiye":-2397.6},{"no":89,"tarih":"11.06.2025","aciklama":"FİŞ NO 2 AHMET ÇELİK","borc":0,"alacak":455.0,"bakiye":-2852.6},{"no":90,"tarih":"12.06.2025","aciklama":"YEMEK UĞUR KAZAR","borc":0,"alacak":340.0,"bakiye":-3192.6},{"no":91,"tarih":"13.06.2025","aciklama":"FİŞ NO: 9 ROZERİN AKBAŞ KEBAPÇI İBO","borc":0,"alacak":400.0,"bakiye":-3592.6},{"no":92,"tarih":"16.06.2025","aciklama":"FİŞ NO 10 HAYRİYE BORAZAN","borc":0,"alacak":285.0,"bakiye":-3877.6},{"no":93,"tarih":"17.06.2025","aciklama":"DİĞER ÖDEMELER) ΒΑΝKA (BANKA","borc":6000.0,"alacak":0,"bakiye":2122.4},{"no":94,"tarih":"17.06.2025","aciklama":"FİŞ NO: 5 GÜLCAN ÖZSELYAN DAMAK TADI","borc":0,"alacak":280.0,"bakiye":1842.4},{"no":95,"tarih":"18.06.2025","aciklama":": 75 FİŞ NO BÜNYAMİN ALTIN ALTIN KARDEŞLER","borc":0,"alacak":565.0,"bakiye":1277.4},{"no":96,"tarih":"19.06.2025","aciklama":"AYGÜN ZORLU DÖNERCİ AYGÜN 19 : FİŞ NO","borc":0,"alacak":190.0,"bakiye":1087.4},{"no":97,"tarih":"20.06.2025","aciklama":"MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş. : 9 NO FİŞ","borc":0,"alacak":140.0,"bakiye":947.4},{"no":98,"tarih":"23.06.2025","aciklama":"NO RABIA KAPLAN PRATİK KAVURMACI : 9 FİŞ","borc":0,"alacak":320.0,"bakiye":627.4},{"no":99,"tarih":"24.06.2025","aciklama":"3 NO FİŞ ASRINLAR RESTORANT GIDA SAN.TİC.LTD.Ş","borc":0,"alacak":440.0,"bakiye":187.4},{"no":100,"tarih":"25.06.2025","aciklama":"NO FİŞ : 10 EROL UĞUR BÜFE VİTAMİN","borc":0,"alacak":400.0,"bakiye":-212.6},{"no":101,"tarih":"26.06.2025","aciklama":"FİŞ NO : 27 EŞSİZ DÖNER GIDA SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":360.0,"bakiye":-572.6},{"no":102,"tarih":"27.06.2025","aciklama":"FİŞ NO 8 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":-712.6},{"no":103,"tarih":"27.06.2025","aciklama":"FİŞ NO 12 SEVAL TEKİNKÖK ARNAVUT LOKANTASI","borc":0,"alacak":400.0,"bakiye":-1112.6},{"no":104,"tarih":"30.06.2025","aciklama":"FİŞ NO 24 KAĞIT KÖFTE ALİ BABA","borc":0,"alacak":460.0,"bakiye":-1572.6},{"no":105,"tarih":"01.07.2025","aciklama":"FİŞ NO: 1 ÖZDEBA KEBAP SAN.TİC.LTD.ŞTİ..","borc":0,"alacak":400.0,"bakiye":-1972.6},{"no":106,"tarih":"02.07.2025","aciklama":"FİŞ NO 19 BURAK ÇETİNKAYA","borc":0,"alacak":455.0,"bakiye":-2427.6},{"no":107,"tarih":"03.07.2025","aciklama":"FİŞ NO 52 KÖFTECİ YUSUF SAN.TİC.A.Ş.","borc":0,"alacak":260.0,"bakiye":-2687.6},{"no":108,"tarih":"04.07.2025","aciklama":"FİŞ NO 4 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":-2827.6},{"no":109,"tarih":"07.07.2025","aciklama":"FİŞ NO 6 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":60.0,"bakiye":-2887.6},{"no":110,"tarih":"17.07.2025","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":10000.0,"alacak":0,"bakiye":7112.4},{"no":111,"tarih":"17.07.2025","aciklama":"DÖNERCİ AYGÜN","borc":0,"alacak":265.0,"bakiye":6847.4},{"no":112,"tarih":"17.07.2025","aciklama":"FİŞ NO: 6 METİN YENİKAYA BUSE OTO YIKAMA","borc":0,"alacak":600.0,"bakiye":6247.4},{"no":113,"tarih":"18.07.2025","aciklama":"FİŞ NO 6 CELİL İNCİ BER RESTORAN","borc":0,"alacak":300.0,"bakiye":5947.4},{"no":114,"tarih":"21.07.2025","aciklama":"FİŞ NO 0008 RABIA KAPLAN PRARTİK KAVURMACI","borc":0,"alacak":340.0,"bakiye":5607.4},{"no":115,"tarih":"22.07.2025","aciklama":"FİŞ NO 8 TUNAHAN KAYALIK ÖZLENEN PİDE SALONU","borc":0,"alacak":310.0,"bakiye":5297.4},{"no":116,"tarih":"23.07.2025","aciklama":"FİŞ NO 4 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":110.0,"bakiye":5187.4},{"no":117,"tarih":"23.07.2025","aciklama":"FİŞ NO: 67 BÜNYAMİN ALTIN ALTIN KARDEŞLER LOK","borc":0,"alacak":245.0,"bakiye":4942.4},{"no":118,"tarih":"24.07.2025","aciklama":"SERHAT KARATAŞ","borc":0,"alacak":3000.0,"bakiye":1942.4},{"no":119,"tarih":"24.07.2025","aciklama":"FİŞ NO: 23 KAĞIT KÖFTE ALİ BABA","borc":0,"alacak":460.0,"bakiye":1482.4},{"no":120,"tarih":"25.07.2025","aciklama":"FİŞ NO 3 AHMET AKBULUT AKKAR RESTAURANT","borc":0,"alacak":250.0,"bakiye":1232.4},{"no":121,"tarih":"28.07.2025","aciklama":"FİŞ NO 8 BURAK ÇETİNKAYA","borc":0,"alacak":500.0,"bakiye":732.4},{"no":122,"tarih":"29.07.2025","aciklama":"FİŞ NO 1 SEVAL TEKİNKÖK ARNAVUT LOKANTASI","borc":0,"alacak":400.0,"bakiye":332.4},{"no":123,"tarih":"30.07.2025","aciklama":"FİŞ NO : 6 FASLA KILIÇ -01SIFIR BİR LOKANTASI","borc":0,"alacak":420.0,"bakiye":-87.6},{"no":124,"tarih":"31.07.2025","aciklama":"BÜNYAMİN ALTIN ALTINKARDEŞLER PİD FİŞ NO : 38","borc":0,"alacak":455.0,"bakiye":-542.6},{"no":125,"tarih":"31.07.2025","aciklama":"FİŞ NO: 11 SAİM GÖK SAİM BURMA TATLICISI","borc":0,"alacak":400.0,"bakiye":-942.6},{"no":126,"tarih":"01.08.2025","aciklama":":9 BİLAL AKMAN-KAŞIK PİLAV NO FİŞ","borc":0,"alacak":110.0,"bakiye":-1052.6},{"no":127,"tarih":"04.08.2025","aciklama":"FİŞ NO 2 ROZERİN AKBAŞ KEBAPÇI İBO","borc":0,"alacak":235.0,"bakiye":-1287.6},{"no":128,"tarih":"05.08.2025","aciklama":"17 AYGÜN ZORLU DÖNERCİ AYGÜN USTA NO FİŞ","borc":0,"alacak":230.0,"bakiye":-1517.6},{"no":129,"tarih":"06.08.2025","aciklama":"NO 20 SEVAL TEKİNKÖK ARNAVUT LOKANTASI FİŞ","borc":0,"alacak":810.0,"bakiye":-2327.6},{"no":130,"tarih":"07.08.2025","aciklama":"13 MUZAFFER YİĞİT KÖFTECİ CEMAL USTA NO FİŞ","borc":0,"alacak":800.0,"bakiye":-3127.6},{"no":131,"tarih":"08.08.2025","aciklama":"FİŞ NO 4 MANULAS MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":-3267.6},{"no":132,"tarih":"08.08.2025","aciklama":"22 TUNAHAN KAYALIK ÖZLENEN PİDE SALON FİŞ NO","borc":0,"alacak":885.0,"bakiye":-4152.6},{"no":133,"tarih":"11.08.2025","aciklama":"FİŞ NO 4 MANULAS MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":230.0,"bakiye":-4382.6},{"no":134,"tarih":"11.08.2025","aciklama":"FİŞ NO 4 ÜRFET YAPI GIDA TİC.LTD.ŞTİ","borc":0,"alacak":259.9,"bakiye":-4642.5},{"no":135,"tarih":"12.08.2025","aciklama":"FİŞ NO:8 METİN DENİZLİ","borc":0,"alacak":200.0,"bakiye":-4842.5},{"no":136,"tarih":"13.08.2025","aciklama":"INT-HVL-UĞUR KAZAR İŞ AVANSI -UĞUR KAZ","borc":10000.0,"alacak":0,"bakiye":5157.5},{"no":137,"tarih":"13.08.2025","aciklama":"FİŞ NO:2 NEVZAT CON","borc":0,"alacak":1390.0,"bakiye":3767.5},{"no":138,"tarih":"13.08.2025","aciklama":"FİŞ NO:3 FARUK ÖZTÜRK","borc":0,"alacak":320.0,"bakiye":3447.5},{"no":139,"tarih":"14.08.2025","aciklama":"FİŞ NO:21 BÜNYAMİN ALTIN","borc":0,"alacak":460.0,"bakiye":2987.5},{"no":140,"tarih":"15.08.2025","aciklama":"FİŞ NO:13 RABIA KAPLAN","borc":0,"alacak":350.0,"bakiye":2637.5},{"no":141,"tarih":"25.08.2025","aciklama":"FİŞ NO:2 MANİSA ULAŞ.HİZM.SAN.TİC.","borc":0,"alacak":1400.0,"bakiye":1237.5},{"no":142,"tarih":"25.08.2025","aciklama":"FİŞ NO:44 SERDAL GÖKGEDİK ORT.","borc":0,"alacak":360.0,"bakiye":877.5},{"no":143,"tarih":"26.08.2025","aciklama":"FİŞ NO:15 ALİ BABA","borc":0,"alacak":480.0,"bakiye":397.5},{"no":144,"tarih":"27.08.2025","aciklama":"FİŞ NO:20 BURAK ÇETİNKAYA","borc":0,"alacak":500.0,"bakiye":-102.5},{"no":145,"tarih":"28.08.2025","aciklama":"FİŞ NO:4 FASLA KILIÇ","borc":0,"alacak":430.0,"bakiye":-532.5},{"no":146,"tarih":"29.08.2025","aciklama":"FİŞ NO:92 ŞABAN BARIŞÇI","borc":0,"alacak":360.0,"bakiye":-892.5},{"no":147,"tarih":"29.08.2025","aciklama":"FİŞ NO:7 MANİSA ULAŞ HİZM.SAN.","borc":0,"alacak":140.0,"bakiye":-1032.5},{"no":148,"tarih":"01.09.2025","aciklama":"FİŞ NO:10 ORHAN GÜLÜM","borc":0,"alacak":480.0,"bakiye":-1512.5},{"no":149,"tarih":"02.09.2025","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":6000.0,"alacak":0,"bakiye":4487.5},{"no":150,"tarih":"02.09.2025","aciklama":"FİŞ NO 116 KÖFTECİ YUSUF SAN.TİC.A.Ş.","borc":0,"alacak":275.0,"bakiye":4212.5},{"no":151,"tarih":"03.09.2025","aciklama":"FİŞ NO 277 MOS LOJİSTİK A.Ş.","borc":0,"alacak":115.0,"bakiye":4097.5},{"no":152,"tarih":"03.09.2025","aciklama":"FİŞ NO  70 ESER KÖSE UMUT PİDE","borc":0,"alacak":350.0,"bakiye":3747.5},{"no":153,"tarih":"04.09.2025","aciklama":"8 SEBAHATTİN KAHRAMAN GARDEN ÇOTANAK NO FİŞ","borc":0,"alacak":315.0,"bakiye":3432.5},{"no":154,"tarih":"05.09.2025","aciklama":"13 SEVAL TEKİNKÖK ARNAVUT LOKANTASI FİŞ  NO","borc":0,"alacak":170.0,"bakiye":3262.5},{"no":155,"tarih":"08.09.2025","aciklama":"3 METİN YENİKAYA BUSE OTO YIKAMA NO FİŞ","borc":0,"alacak":600.0,"bakiye":2662.5},{"no":156,"tarih":"08.09.2025","aciklama":"2 DÜRÜMCÜ YUSUF USTA FİŞ  NO","borc":0,"alacak":210.0,"bakiye":2452.5},{"no":157,"tarih":"10.09.2025","aciklama":"4 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş. NO FİŞ","borc":0,"alacak":140.0,"bakiye":2312.5},{"no":158,"tarih":"10.09.2025","aciklama":"NO: 44 KAĞIT KÖFTE ALİ BABA FİŞ","borc":0,"alacak":480.0,"bakiye":1832.5},{"no":159,"tarih":"11.09.2025","aciklama":"NO  FİŞ 16 HAYRİYE BORAZAN","borc":0,"alacak":255.0,"bakiye":1577.5},{"no":160,"tarih":"11.09.2025","aciklama":"FİŞ NO 2 URFET YAPI TİC.LTD.ŞTİ.","borc":0,"alacak":350.0,"bakiye":1227.5},{"no":161,"tarih":"15.09.2025","aciklama":"FİŞ NO 2 UMUT GÜNEŞ DÜRÜMCÜ ŞERİF-2","borc":0,"alacak":195.0,"bakiye":1032.5},{"no":162,"tarih":"16.09.2025","aciklama":"15  FİŞ NO MELİK DENİZLİ DÜRÜMCÜ YUSUF USTA","borc":0,"alacak":200.0,"bakiye":832.5},{"no":163,"tarih":"17.09.2025","aciklama":"FİŞ NO 14 MUZAFFER YİĞİT FATİH ÇAĞ KEBAP SAL","borc":0,"alacak":400.0,"bakiye":432.5},{"no":164,"tarih":"18.09.2025","aciklama":"FİŞ NO 55 HALİDENUR ÇETİNKAYA OLCAY USTA EV","borc":0,"alacak":310.0,"bakiye":122.5},{"no":165,"tarih":"19.09.2025","aciklama":"FİŞ NO: 5 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":-17.5},{"no":166,"tarih":"19.09.2025","aciklama":"FİŞ NO:100 ŞABAN BARIŞÇI 1990 ŞABAN USTANIN Y","borc":0,"alacak":460.0,"bakiye":-477.5},{"no":167,"tarih":"23.09.2025","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":4522.5},{"no":168,"tarih":"29.09.2025","aciklama":"FİŞ NO 244 KÖFTECİ YUSUF SAN.TİC.A.Ş.","borc":0,"alacak":260.0,"bakiye":4262.5},{"no":169,"tarih":"30.09.2025","aciklama":"FİŞ NO  12 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":110.0,"bakiye":4152.5},{"no":170,"tarih":"30.09.2025","aciklama":"FİŞ NO: 17 CAMÍA DÖNER MERVE ÇAKIR","borc":0,"alacak":500.0,"bakiye":3652.5},{"no":171,"tarih":"01.10.2025","aciklama":"SEFEROĞLU BAKLA 1 YUSUF TALHA PAÇAMAN FİŞ NO","borc":0,"alacak":400.0,"bakiye":3252.5},{"no":172,"tarih":"01.10.2025","aciklama":"FİŞ NO 11 AŞKINLAR RESTORANI SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":390.0,"bakiye":2862.5},{"no":173,"tarih":"02.10.2025","aciklama":"7 AYGÜN ZORLU DÖNER SAN.TİC.LTD.ŞTİ. FİŞ NO","borc":0,"alacak":575.0,"bakiye":2287.5},{"no":174,"tarih":"03.10.2025","aciklama":"15 BİLAL AKMAN KAŞIK PİLAV FİŞ NO","borc":0,"alacak":100.0,"bakiye":2187.5},{"no":175,"tarih":"06.10.2025","aciklama":"FİŞ NO 16 ŞEVKİ ATMAN GAMALI KÖFTECİSİ","borc":0,"alacak":370.0,"bakiye":1817.5},{"no":176,"tarih":"07.10.2025","aciklama":"BANKA (BANKA DİĞER ÖDEMELER)","borc":10000.0,"alacak":0,"bakiye":11817.5},{"no":177,"tarih":"07.10.2025","aciklama":"FİŞ NO 19 İBRAHİM ŞİMŞEK LEZZET DURAĞI","borc":0,"alacak":280.0,"bakiye":11537.5},{"no":178,"tarih":"07.10.2025","aciklama":"FİŞ NO: 42 NİHAT CEBECİ BEY DÖNER","borc":0,"alacak":300.0,"bakiye":11237.5},{"no":179,"tarih":"08.10.2025","aciklama":"YARANOĞLU OTELCİLİK TUR.SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":3500.0,"bakiye":7737.5},{"no":180,"tarih":"08.10.2025","aciklama":"31 MUZAFFER SABAZ MUZAFFERİN YERİ FİŞ NO","borc":0,"alacak":435.0,"bakiye":7302.5},{"no":181,"tarih":"08.10.2025","aciklama":"FİŞ NO 116 SUN CENTER TUR.TAS.LTD.","borc":0,"alacak":505.0,"bakiye":6797.5},{"no":182,"tarih":"08.10.2025","aciklama":"FİŞ NO 257 HÜRTUR PETROL TİC.LTD.ŞTİ.","borc":0,"alacak":120.0,"bakiye":6677.5},{"no":183,"tarih":"09.10.2025","aciklama":"FİŞ NO: 1 ÖZGÜR CAN GÖKOVA PİDE","borc":0,"alacak":440.0,"bakiye":6237.5},{"no":184,"tarih":"09.10.2025","aciklama":"FİŞ NO 130 MUHVETTİN SÖNMEZ","borc":0,"alacak":535.0,"bakiye":5702.5},{"no":185,"tarih":"10.10.2025","aciklama":"GÖK-SAN İNŞ.ELEK.TEKS.SİS.SAN.LTD.ŞTİ.","borc":0,"alacak":5600.0,"bakiye":102.5},{"no":186,"tarih":"10.10.2025","aciklama":"FİŞ NO 23 MERVE ÇAKIR CAMİA DÖNER","borc":0,"alacak":480.0,"bakiye":-377.5},{"no":187,"tarih":"13.10.2025","aciklama":"FİŞ NO 52 BİLENDOZ ŞİŞKO KOSOVA ET LOKANTASI","borc":0,"alacak":530.0,"bakiye":-907.5},{"no":188,"tarih":"14.10.2025","aciklama":"FİŞ NO 34 KÖFTECİ YUSUF SAN.TİC.A.Ş.","borc":0,"alacak":305.0,"bakiye":-1212.5},{"no":189,"tarih":"15.10.2025","aciklama":"FİŞ NO 12 SEVAL TEKİNKÖK ARNAVUT LOKANTASI","borc":0,"alacak":320.0,"bakiye":-1532.5},{"no":190,"tarih":"16.10.2025","aciklama":"BANKA ( BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":3467.5},{"no":191,"tarih":"16.10.2025","aciklama":"FİŞ NO 9 EROL UĞUR","borc":0,"alacak":290.0,"bakiye":3177.5},{"no":192,"tarih":"17.10.2025","aciklama":"FİŞ NO 5 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":110.0,"bakiye":3067.5},{"no":193,"tarih":"17.10.2025","aciklama":"FİŞ NO 4 SEBAHATTİN KAHRAMAN GARDEN ÇOTANAK","borc":0,"alacak":390.0,"bakiye":2677.5},{"no":194,"tarih":"20.10.2025","aciklama":"FİŞ NO: 12 CAMÍA DÖNER MERVE ÇAKIR","borc":0,"alacak":480.0,"bakiye":2197.5},{"no":195,"tarih":"21.10.2025","aciklama":"FİŞ NO 4 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":2057.5},{"no":196,"tarih":"21.10.2025","aciklama":"FİŞ NO 37 BÜNYAMİN ALTIN ALTIN KARDEŞLER","borc":0,"alacak":395.0,"bakiye":1662.5},{"no":197,"tarih":"22.10.2025","aciklama":"FİŞ NO 8 MUZAFFER YİĞİT YİĞİT CAĞ KEBAP","borc":0,"alacak":610.0,"bakiye":1052.5},{"no":198,"tarih":"23.10.2025","aciklama":"FİŞ NO: 6 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":912.5},{"no":199,"tarih":"23.10.2025","aciklama":"KANUNEN KABUL EDİLMEYEN GİDER","borc":0,"alacak":430.0,"bakiye":482.5},{"no":200,"tarih":"24.10.2025","aciklama":"FİŞ NO 16 EŞSİZ DÖNER SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":300.0,"bakiye":182.5},{"no":201,"tarih":"24.10.2025","aciklama":"FİŞ NO 1 METİN YENİKAYA BUSE OTO YIKAMA","borc":0,"alacak":700.0,"bakiye":-517.5},{"no":202,"tarih":"28.10.2025","aciklama":"FİŞ NO 33 KÖFTECİ YUSUF SAN.TİC.A.Ş.","borc":0,"alacak":290.0,"bakiye":-807.5},{"no":203,"tarih":"30.10.2025","aciklama":"7 UMUT GÜNEŞ DÜRÜMCÜ ŞERİF FİŞ NO","borc":0,"alacak":190.0,"bakiye":-997.5},{"no":204,"tarih":"30.10.2025","aciklama":"FİŞ NO 3 MANULAS MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":280.0,"bakiye":-1277.5},{"no":205,"tarih":"31.10.2025","aciklama":"FİŞ NO 9 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":-1417.5},{"no":206,"tarih":"31.10.2025","aciklama":"FİŞ NO 22 RAMİZ RESTORAN SAN.TİC.A.Ş.","borc":0,"alacak":575.0,"bakiye":-1992.5},{"no":207,"tarih":"03.11.2025","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":3007.5},{"no":208,"tarih":"03.11.2025","aciklama":"FİŞ NO 24 CAMÍA DÖNER MERVE ÇAKIR","borc":0,"alacak":510.0,"bakiye":2497.5},{"no":209,"tarih":"04.11.2025","aciklama":"FİŞ NO 79 HÜSEYİN KUŞÇULAR BI TENCERE","borc":0,"alacak":350.0,"bakiye":2147.5},{"no":210,"tarih":"07.11.2025","aciklama":"FİŞ NO 22 BI TENCERE","borc":0,"alacak":350.0,"bakiye":1797.5},{"no":211,"tarih":"10.11.2025","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":8000.0,"alacak":0,"bakiye":9797.5},{"no":212,"tarih":"10.11.2025","aciklama":"FİŞ NO 17 SELEN KARAKAYA FLAMINGO 3","borc":0,"alacak":390.0,"bakiye":9407.5},{"no":213,"tarih":"11.11.2025","aciklama":"FİŞ NO 9 ENİS DURAN AS KAVURMA KAHVALTI","borc":0,"alacak":555.0,"bakiye":8852.5},{"no":214,"tarih":"11.11.2025","aciklama":"FİŞ NO:1 MUSTAFA KARACA-KRC KURU TEMİZLEME","borc":0,"alacak":100.0,"bakiye":8752.5},{"no":215,"tarih":"12.11.2025","aciklama":"BERAT BEKMAN","borc":0,"alacak":5000.0,"bakiye":3752.5},{"no":216,"tarih":"13.11.2025","aciklama":"FİŞ NO: 100 ANADOLU REST.LTD.ŞTİ.","borc":0,"alacak":490.0,"bakiye":3262.5},{"no":217,"tarih":"13.11.2025","aciklama":"FİŞ NO 4 MUSTAFA ERTEKİN GAZİANTEP NİZİPLİOĞ","borc":0,"alacak":390.0,"bakiye":2872.5},{"no":218,"tarih":"14.11.2025","aciklama":"GUN GIDA VE İHT.MAD.SAN.TİC.A.Ş.","borc":0,"alacak":2000.0,"bakiye":872.5},{"no":219,"tarih":"14.11.2025","aciklama":"FİŞ NO 83 TUNA PETROL TUR.SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":245.0,"bakiye":627.5},{"no":220,"tarih":"17.11.2025","aciklama":"FİŞ NO: 63 HÜSEYİN KUŞÇULAR BI TENCERE","borc":0,"alacak":350.0,"bakiye":277.5},{"no":221,"tarih":"19.11.2025","aciklama":"CESUR LASTİK LOJ.OTO. LTD. ŞTİ.","borc":0,"alacak":2000.0,"bakiye":-1722.5},{"no":222,"tarih":"19.11.2025","aciklama":"FİŞ NO:0013 MERVE ÇAKIR-CAMİA DÖNER","borc":0,"alacak":480.0,"bakiye":-2202.5},{"no":223,"tarih":"20.11.2025","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":2797.5},{"no":224,"tarih":"20.11.2025","aciklama":"FİŞ NO:62 HÜSEYİN KUŞÇULAR-Bİ TENCERE","borc":0,"alacak":410.0,"bakiye":2387.5},{"no":225,"tarih":"21.11.2025","aciklama":"FİŞ NO:0007 MANULAŞ MANİSA ULAŞIM HİZ. MAK. SAN.","borc":0,"alacak":140.0,"bakiye":2247.5},{"no":226,"tarih":"21.11.2025","aciklama":"FİŞ NO:2 UMUT GÜNEŞ DÜRÜMCÜ ŞERİF-2","borc":0,"alacak":210.0,"bakiye":2037.5},{"no":227,"tarih":"24.11.2025","aciklama":"FİŞ NO:0003 MUZAFFER YİĞİT-YİĞİT CAĞ KEBАР","borc":0,"alacak":325.0,"bakiye":1712.5},{"no":228,"tarih":"25.11.2025","aciklama":"FİŞ NO:0021 BÜNYAMİN ALTIN-ALTIN KARDEŞLER PİDE&","borc":0,"alacak":435.0,"bakiye":1277.5},{"no":229,"tarih":"26.11.2025","aciklama":"FİŞ NO:16 ÖMER TAHİR ÖZGÜZEL-İLKASRIN ET BANKASI","borc":0,"alacak":555.0,"bakiye":722.5},{"no":230,"tarih":"27.11.2025","aciklama":"FİŞ NO:0032 BỈ TENCERE","borc":0,"alacak":330.0,"bakiye":392.5},{"no":231,"tarih":"28.11.2025","aciklama":"FİŞ NO:0002 MERVE ÇAKIR-CAMİA DÖNER","borc":0,"alacak":480.0,"bakiye":-87.5},{"no":232,"tarih":"01.12.2025","aciklama":"FİŞ NO:75 HÜSEYİN KUŞÇULAR-Bİ TENCERE","borc":0,"alacak":280.0,"bakiye":-367.5},{"no":233,"tarih":"02.12.2025","aciklama":"FİŞ NO:0100 ŞABAN BARIŞÇI-1990 ŞABAN USTANIN YER","borc":0,"alacak":360.0,"bakiye":-727.5},{"no":234,"tarih":"03.12.2025","aciklama":"FİŞ NO:4 UMUT GÜNEŞ DÜRÜMCÜ ŞERİF-2","borc":0,"alacak":220.0,"bakiye":-947.5},{"no":235,"tarih":"05.12.2025","aciklama":"FİŞ NO:0009 HAKAN SÖZER-İNEGÖL KÖFTECİSİ","borc":0,"alacak":450.0,"bakiye":-1397.5},{"no":236,"tarih":"15.12.2025","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":3602.5},{"no":237,"tarih":"15.12.2025","aciklama":"FİŞ NO:0009 MANULAŞ MANİSA ULAŞIM HİZ. MAK. SAN.","borc":0,"alacak":1400.0,"bakiye":2202.5},{"no":238,"tarih":"15.12.2025","aciklama":"FİŞ NO:0001 SEBAHATTİN KAHRAMAN-GARDEN ÇOTANAK Y","borc":0,"alacak":370.0,"bakiye":1832.5},{"no":239,"tarih":"16.12.2025","aciklama":"FİŞ NO:0068 YUNUS CAĞ KEBAP GID. SAN. TİC. LTD.","borc":0,"alacak":470.0,"bakiye":1362.5},{"no":240,"tarih":"17.12.2025","aciklama":"FİŞ NO:0045 KAĞIT KÖFTE-ALİ BABA","borc":0,"alacak":520.0,"bakiye":842.5},{"no":241,"tarih":"19.12.2025","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":5842.5},{"no":242,"tarih":"19.12.2025","aciklama":"FİŞ NO: 5 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":5702.5},{"no":243,"tarih":"19.12.2025","aciklama":"FİŞ NO 1 ABDULKADİR ERTAM ÇÖZÜM OTO ELEKTRİK","borc":0,"alacak":500.0,"bakiye":5202.5},{"no":244,"tarih":"19.12.2025","aciklama":"FİŞ NO  17 BÌ TENCERE :","borc":0,"alacak":450.0,"bakiye":4752.5},{"no":245,"tarih":"19.12.2025","aciklama":"FİŞ NO 34 EGE PLATİN OTO HİZMET SAN.TİC.LTD.ŞT","borc":0,"alacak":900.0,"bakiye":3852.5},{"no":246,"tarih":"22.12.2025","aciklama":"FİŞ NO 2 ÜRFET YAPI GIDA TİC.LTD.ŞTİ.","borc":0,"alacak":279.9,"bakiye":3572.6},{"no":247,"tarih":"23.12.2025","aciklama":"FİŞ NO 8 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":3432.6},{"no":248,"tarih":"23.12.2025","aciklama":": 54 FİŞ NO  SEFA TOPALOĞLU YILMAZ SEFA KÖFTE S","borc":0,"alacak":385.0,"bakiye":3047.6},{"no":249,"tarih":"24.12.2025","aciklama":"FİŞ NO 17 SEVAL TEKİNKÖK ARNAVUT LOKANTASI","borc":0,"alacak":280.0,"bakiye":2767.6},{"no":250,"tarih":"24.12.2025","aciklama":"FİŞ NO: 11 CAMİA DÖNER MERVE ÇAKIR","borc":0,"alacak":510.0,"bakiye":2257.6},{"no":251,"tarih":"26.12.2025","aciklama":"FİŞ NO 13 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":2117.6},{"no":252,"tarih":"29.12.2025","aciklama":"FİŞ NO: 40 AKHİSAR CAN KÖFTE SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":480.0,"bakiye":1637.6},{"no":253,"tarih":"30.12.2025","aciklama":"FİŞ NO: 2 GÜLCAN ÖZSELYAN DAMAK TADI LOKANTA","borc":0,"alacak":240.0,"bakiye":1397.6},{"no":254,"tarih":"31.12.2025","aciklama":"2025 KAPANIŞ FİŞİ","borc":0,"alacak":857.6,"bakiye":540.0},{"no":255,"tarih":"31.12.2025","aciklama":"FİŞ NO: 6 KAĞIT KÖFTE ALİ BABA","borc":0,"alacak":540.0,"bakiye":0.0},{"no":256,"tarih":"01.01.2026","aciklama":"2026 AÇILIŞ FİŞİ","borc":857.6,"alacak":0,"bakiye":857.6},{"no":257,"tarih":"05.01.2026","aciklama":"FİŞ NO 30 ESER KÖSE UMUT PİDE","borc":0,"alacak":440.0,"bakiye":417.6},{"no":258,"tarih":"06.01.2026","aciklama":"FİŞ NO 1 MANULAŞ MANİSA ULAŞIM SAN.TİC.A.Ş.","borc":0,"alacak":140.0,"bakiye":277.6},{"no":259,"tarih":"09.01.2026","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":5277.6},{"no":260,"tarih":"12.01.2026","aciklama":"FİŞ NO:0006 SAİM GÖK-SAİM BURMA TATLICISI","borc":0,"alacak":630.0,"bakiye":4647.6},{"no":261,"tarih":"12.01.2026","aciklama":"FİŞ NO:0007 MERVE ÇAKIR-CAMİA DÖNER","borc":0,"alacak":700.0,"bakiye":3947.6},{"no":262,"tarih":"13.01.2026","aciklama":"FİŞ NO:0046 BÜNYAMİN ALTIN-ALTIN KARDEŞLER LOKAN","borc":0,"alacak":535.0,"bakiye":3412.6},{"no":263,"tarih":"14.01.2026","aciklama":"FİŞ NO:0033 ALİ BABA-KAĞIT KÖFTE","borc":0,"alacak":550.0,"bakiye":2862.6},{"no":264,"tarih":"15.01.2026","aciklama":"FİŞ NO:0008 ŞABAN BARIŞÇI-1990 ŞABAN USTANIN YER","borc":0,"alacak":285.0,"bakiye":2577.6},{"no":265,"tarih":"16.01.2026","aciklama":"FİŞ NO:0031 BURAK ÇETİNKAYA","borc":0,"alacak":560.0,"bakiye":2017.6},{"no":266,"tarih":"19.01.2026","aciklama":"FİŞ NO:0015 BÜNYAMİN ALTIN-ALTIN KARDEŞLER PİDE&","borc":0,"alacak":500.0,"bakiye":1517.6},{"no":267,"tarih":"20.01.2026","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":3000.0,"alacak":0,"bakiye":4517.6},{"no":268,"tarih":"20.01.2026","aciklama":"FİŞ NO:0001 MANULAŞ MANİSA ULAŞIM HİZ. MAK. SAN.","borc":0,"alacak":140.0,"bakiye":4377.6},{"no":269,"tarih":"20.01.2026","aciklama":"FİŞ NO:1 CESUR LASTİK LOJİSTİK OTO. SAN. VE TİC.","borc":0,"alacak":300.0,"bakiye":4077.6},{"no":270,"tarih":"20.01.2026","aciklama":"FİŞ NO:4 GAZİANTEPLİ DEĞİRMENCİOĞLU BAKLAVALARI","borc":0,"alacak":385.0,"bakiye":3692.6},{"no":271,"tarih":"20.01.2026","aciklama":"FİŞ NO:0029 BÜNYAMİN ALTIN-ALTIN KARDEŞLER PİDE&","borc":0,"alacak":900.0,"bakiye":2792.6},{"no":272,"tarih":"21.01.2026","aciklama":"MANULAŞ MANİSA ULAŞIM HİZ. MAK. SAN. VE TİC. A.Ş","borc":0,"alacak":60.0,"bakiye":2732.6},{"no":273,"tarih":"21.01.2026","aciklama":"FİŞ NO:0023 TUNAHAN KAYALIK-ÖZLENEN PIDE SALONU","borc":0,"alacak":710.0,"bakiye":2022.6},{"no":274,"tarih":"22.01.2026","aciklama":"FİŞ NO:0003 MANULAS MANİSA ULAŞIM HİZ. MAK. SAN.","borc":0,"alacak":140.0,"bakiye":1882.6},{"no":275,"tarih":"22.01.2026","aciklama":"FİŞ NO:0002 SAIM GÖK-SAIM BURMA TATLICISI","borc":0,"alacak":770.0,"bakiye":1112.6},{"no":276,"tarih":"23.01.2026","aciklama":"FİŞ NO:1 MMSE DÜRÜMOO RESTORAN GIDA GAYRİMENKUL","borc":0,"alacak":200.0,"bakiye":912.6},{"no":277,"tarih":"26.01.2026","aciklama":"FİŞ NO:10 UMUT GÜNEŞ DÜRÜMCÜ ŞERİF-2","borc":0,"alacak":220.0,"bakiye":692.6},{"no":278,"tarih":"26.01.2026","aciklama":"FİŞ NO:2 ALI NEVZAT CON-SEFEROĞLU BAKLAVALARI","borc":0,"alacak":1020.0,"bakiye":-327.4},{"no":279,"tarih":"27.01.2026","aciklama":"FİŞ NO:0004 MANULAŞ MANİSA ULAŞIM HİZ. MAK. SAN.","borc":0,"alacak":140.0,"bakiye":-467.4},{"no":280,"tarih":"27.01.2026","aciklama":"FİŞ NO:0018 BÜNYAMİN ALTIN-ALTIN KARDEŞLER PİDE &","borc":0,"alacak":350.0,"bakiye":-817.4},{"no":281,"tarih":"29.01.2026","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":7000.0,"alacak":0,"bakiye":6182.6},{"no":282,"tarih":"29.01.2026","aciklama":"FİŞ NO:7 UMUT GÜNEŞ DÜRÜMCÜ ŞERİF-2","borc":0,"alacak":220.0,"bakiye":5962.6},{"no":283,"tarih":"30.01.2026","aciklama":"FİŞ NO:0016 HAKAN SÖZER-İNEGÖL KÖFTECİSİ","borc":0,"alacak":540.0,"bakiye":5422.6},{"no":284,"tarih":"02.02.2026","aciklama":"FİŞ NO:0016 PİZZA BULLS ÜRFET YAPI GIDA ÜRE. TIC","borc":0,"alacak":349.0,"bakiye":5073.6},{"no":285,"tarih":"04.02.2026","aciklama":"FİŞ NO:0008 MANULAS MANİSA ULAŞIM SAN. VE TİC. A","borc":0,"alacak":140.0,"bakiye":4933.6},{"no":286,"tarih":"04.02.2026","aciklama":"FİŞ NO:0004 FASLA KILIÇ-01 SIFIRBİR OCAKBAŞI","borc":0,"alacak":280.0,"bakiye":4653.6},{"no":287,"tarih":"05.02.2026","aciklama":"FİŞ NO:0018 HALİL İBRAHİM AKBAŞ-KEBAPÇI İBO","borc":0,"alacak":330.0,"bakiye":4323.6},{"no":288,"tarih":"06.02.2026","aciklama":"FİŞ NO:000096 HASSEN PETROL ÜRÜNLERİ TİCARET LİM","borc":0,"alacak":120.0,"bakiye":4203.6},{"no":289,"tarih":"06.02.2026","aciklama":"FİŞ NO:0008 MANULAŞ MANİSA ULAŞIM SAN. VE TİC. A","borc":0,"alacak":140.0,"bakiye":4063.6},{"no":290,"tarih":"09.02.2026","aciklama":"NO:0159 MOS LOJİSTİK HİZMETLERİ A.Ş. FİŞ","borc":0,"alacak":145.0,"bakiye":3918.6},{"no":291,"tarih":"09.02.2026","aciklama":"FİŞ NO:0018 TUĞBA KURUYEMİŞ GIDA İNŞ. SAN. TİC.","borc":0,"alacak":299.9,"bakiye":3618.7},{"no":292,"tarih":"09.02.2026","aciklama":"FİŞ NO:0066 BÜNYAMİN ALTIN-ALTIN KARDEŞLER LOKAN","borc":0,"alacak":560.0,"bakiye":3058.7},{"no":293,"tarih":"10.02.2026","aciklama":"NO:3 CESUR LASTİK LOJİSTİK OTO. SAN. VE TİC. FİŞ","borc":0,"alacak":400.0,"bakiye":2658.7},{"no":294,"tarih":"10.02.2026","aciklama":"FİŞ NO:0005 MANULAŞ MANİSA ULAŞIM SAN. VE TİC. A","borc":0,"alacak":140.0,"bakiye":2518.7},{"no":295,"tarih":"10.02.2026","aciklama":"NO:0015 PİZZA BULLS ÜRFET YAPI GIDA URE. TİC FİŞ","borc":0,"alacak":339.0,"bakiye":2179.7},{"no":296,"tarih":"11.02.2026","aciklama":"NO:00002 PİZZAHOUSE GIDA SAN. VE TİC. LTD. Ş FİŞ","borc":0,"alacak":200.0,"bakiye":1979.7},{"no":297,"tarih":"12.02.2026","aciklama":"FİŞ NO:0004 TURAN ÇAL-AKÇEŞME KOKOREÇ","borc":0,"alacak":310.0,"bakiye":1669.7},{"no":298,"tarih":"12.02.2026","aciklama":"FİŞ NO:0033 SNBE TUR. GIDA İNŞ. SAN. VE TİC. A.Ş","borc":0,"alacak":280.0,"bakiye":1389.7},{"no":299,"tarih":"13.02.2026","aciklama":"FİŞ NO:0007 MANULAŞ MANİSA ULAŞIM SAN. VE TİC. A","borc":0,"alacak":140.0,"bakiye":1249.7},{"no":300,"tarih":"16.02.2026","aciklama":"FİŞ NO:4 METİN YENİKAYA-BUSE OTO YIKAMA","borc":0,"alacak":700.0,"bakiye":549.7},{"no":301,"tarih":"16.02.2026","aciklama":"FİŞ NO:0032 MERVE ÇAKIR-CAMİA DÖNER","borc":0,"alacak":380.0,"bakiye":169.7},{"no":302,"tarih":"17.02.2026","aciklama":"FİŞ NO:0020 ANADOLU KARYA GIDA TUR. İNŞ.","borc":0,"alacak":485.0,"bakiye":-315.3},{"no":303,"tarih":"18.02.2026","aciklama":"FİŞ NO:0072 HAKAN SÖZER-İNEGÖL KÖFTECİSİ","borc":0,"alacak":540.0,"bakiye":-855.3},{"no":304,"tarih":"20.02.2026","aciklama":"FİŞ NO:0003 MANULAŞ MANİSA ULAŞIM SAN. VE TİC. A","borc":0,"alacak":140.0,"bakiye":-995.3},{"no":305,"tarih":"27.02.2026","aciklama":"FİŞ NO:0010 MANULAŞ MANİSA ULAŞIM SAN. VE TİC. A","borc":0,"alacak":140.0,"bakiye":-1135.3},{"no":306,"tarih":"04.03.2026","aciklama":"FİŞ NO:0053 HAKAN SÖZER-İNEGÖL KÖFTECİSİ","borc":0,"alacak":490.0,"bakiye":-1625.3},{"no":307,"tarih":"06.03.2026","aciklama":"FİŞ NO: 0004 MANULAŞ MANİSA ULAŞIM SAN. VE TİC. A","borc":0,"alacak":140.0,"bakiye":-1765.3},{"no":308,"tarih":"06.03.2026","aciklama":"FİŞ NO:0006 MERVE ÇAKIR-CAMİA DÖNER","borc":0,"alacak":440.0,"bakiye":-2205.3},{"no":309,"tarih":"13.03.2026","aciklama":"FİŞ NO:0007 MANULAŞ MANİSA ULAŞIM SAN. VE TİC.","borc":0,"alacak":140.0,"bakiye":-2345.3},{"no":310,"tarih":"18.03.2026","aciklama":"FİŞ NO:3 METİN YENİKAYA-BUSE OTO YIKAMA","borc":0,"alacak":700.0,"bakiye":-3045.3},{"no":311,"tarih":"23.03.2026","aciklama":"FİŞ NO: 0004 MANULAŞ MANİSA ULAŞIM SAN. VE TİC. A","borc":0,"alacak":420.0,"bakiye":-3465.3},{"no":312,"tarih":"24.03.2026","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":7000.0,"alacak":0,"bakiye":3534.7},{"no":313,"tarih":"24.03.2026","aciklama":"FİŞ NO:0084 NEXT ÇİĞLİ THE NEXT GIDA İŞLETMELE","borc":0,"alacak":400.0,"bakiye":3134.7},{"no":314,"tarih":"25.03.2026","aciklama":"FİŞ NO:0063 GENÇ RESTAURANT GIDA. SAN. VE TİC.","borc":0,"alacak":450.0,"bakiye":2684.7},{"no":315,"tarih":"27.03.2026","aciklama":"FİŞ NO: 0008 MANULAŞ MANİSA ULAŞIM HİZ. MAK. SAN.","borc":0,"alacak":190.0,"bakiye":2494.7},{"no":316,"tarih":"28.03.2026","aciklama":"FİŞ NO:0134 ŞABAN BARIŞÇI-1990 ŞABAN USTANIN YER","borc":0,"alacak":405.0,"bakiye":2089.7},{"no":317,"tarih":"29.03.2026","aciklama":"FİŞ NO: 52 MELİK DENİZLİ DÜRÜMCÜ YUSUF USTA","borc":0,"alacak":250.0,"bakiye":1839.7},{"no":318,"tarih":"31.03.2026","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":3000.0,"alacak":0,"bakiye":4839.7},{"no":319,"tarih":"31.03.2026","aciklama":"FİŞ NO:2 CESUR LASTİK LOJİSTİK OTO. SAN. VE TİC.","borc":0,"alacak":2900.0,"bakiye":1939.7},{"no":320,"tarih":"31.03.2026","aciklama":"FİŞ NO:1 METİN YENİKAYA-BUSE OTO YIKAMA","borc":0,"alacak":700.0,"bakiye":1239.7},{"no":321,"tarih":"31.03.2026","aciklama":"MANULAŞ MANİSA ULAŞIM HİZ. MAK. SAN. VE TİC. A.Ş","borc":0,"alacak":95.0,"bakiye":1144.7},{"no":322,"tarih":"31.03.2026","aciklama":"FİŞ NO: 0001 FASLA KILIÇ- 01 SIFIRBİR OCAKBAŞI","borc":0,"alacak":300.0,"bakiye":844.7},{"no":323,"tarih":"31.03.2026","aciklama":"FİŞ NO:0003 FASLA KILIÇ-01SIFIR BİR OCAKBAŞI","borc":0,"alacak":440.0,"bakiye":404.7},{"no":324,"tarih":"31.03.2026","aciklama":"FİŞ NO:0008 MELİH DENİZLİ DÜRÜMCÜ YUSUF","borc":0,"alacak":250.0,"bakiye":154.7},{"no":325,"tarih":"02.04.2026","aciklama":"MANULAŞ MANİSA ULAŞIM HİZ. MAK. SAN. VE TİC. A.Ş","borc":0,"alacak":95.0,"bakiye":59.7},{"no":326,"tarih":"02.04.2026","aciklama":"FİŞ NO:0019 TUNAHAN KAYALIK-ÖZLENEN PİDE SALONU","borc":0,"alacak":325.0,"bakiye":-265.3},{"no":327,"tarih":"03.04.2026","aciklama":"FİŞ NO:0010 SEVAL TEKİNKÖK-ARNAVUR LOKANTASI","borc":0,"alacak":300.0,"bakiye":-565.3},{"no":328,"tarih":"06.04.2026","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":18000.0,"alacak":0,"bakiye":17434.7},{"no":329,"tarih":"06.04.2026","aciklama":"FİŞ NO:0012 SEBAHATTİN KAHRAMAN GARDEN ÇOTAΝΑ","borc":0,"alacak":785.0,"bakiye":16649.7},{"no":330,"tarih":"07.04.2026","aciklama":"FİŞ NO:17 ATİLLA DURAN-YİĞİT CAĞ KEBAP","borc":0,"alacak":950.0,"bakiye":15699.7},{"no":331,"tarih":"08.04.2026","aciklama":"FİŞ NO: 0003 MANULAŞ MANİSA ULAŞIM HİZ. MAK. SAN.","borc":0,"alacak":190.0,"bakiye":15509.7},{"no":332,"tarih":"08.04.2026","aciklama":"FİŞ NO:0019 TUNAHAN KAYALIK-ÖZLENEN PİDE SALONU","borc":0,"alacak":1090.0,"bakiye":14419.7},{"no":333,"tarih":"09.04.2026","aciklama":"FİŞ NO:0033 OSMAN KORKMAZ OSMAN USTANIN YERİ","borc":0,"alacak":900.0,"bakiye":13519.7},{"no":334,"tarih":"10.04.2026","aciklama":"HAKCAN OTELCİLİK TURZ.GIDA TAŞM.OTO.LTD.ŞTİ.","borc":0,"alacak":12000.0,"bakiye":1519.7},{"no":335,"tarih":"10.04.2026","aciklama":"KÖFTECİ YUSUF GIDA ÍTH. İHR. SAN. VE TİC. A.Ş.","borc":0,"alacak":930.0,"bakiye":589.7},{"no":336,"tarih":"13.04.2026","aciklama":"FİŞ NO:0004 ATILA DURAN ÖZEL BÖREK İSTASYONU","borc":0,"alacak":550.0,"bakiye":39.7},{"no":337,"tarih":"15.04.2026","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":10000.0,"alacak":0,"bakiye":10039.7},{"no":338,"tarih":"15.04.2026","aciklama":"FİŞ NO: 0001 MMSE DÜRÜMOO RESTORAN GIDA SAN. TÍc","borc":0,"alacak":200.0,"bakiye":9839.7},{"no":339,"tarih":"16.04.2026","aciklama":"FİŞ NO:0026 MERVE ÇAKIR CAMÍA DÖNER","borc":0,"alacak":280.0,"bakiye":9559.7},{"no":340,"tarih":"17.04.2026","aciklama":"FİŞ NO:0081 ŞABAN BARIŞÇI 1990 ŞABAN USTANIN Y","borc":0,"alacak":420.0,"bakiye":9139.7},{"no":341,"tarih":"18.04.2026","aciklama":"MANULAŞ MANİSA ULAŞIM HİZ. MAK. SAN. VE TİC. A.Ş","borc":0,"alacak":102.0,"bakiye":9037.7},{"no":342,"tarih":"20.04.2026","aciklama":"FİŞ NO:1 METİN YENİKAYA BUSE OTO YIKAMA","borc":0,"alacak":700.0,"bakiye":8337.7},{"no":343,"tarih":"20.04.2026","aciklama":"FİŞ NO:0029 ALİ BABA KAĞIT KÖFTE","borc":0,"alacak":570.0,"bakiye":7767.7},{"no":344,"tarih":"21.04.2026","aciklama":"FİŞ NO:0012 UMUT GÜNEŞ DÜRÜMCÜ ŞERİF","borc":0,"alacak":360.0,"bakiye":7407.7},{"no":345,"tarih":"22.04.2026","aciklama":"KÖFTECİ YUSUE GIDA ÍTH. İHR. SAN. VE TİC. A.Ş.","borc":0,"alacak":310.0,"bakiye":7097.7},{"no":346,"tarih":"24.04.2026","aciklama":"FİŞ NO: 0015 MANİSA HD GIDA PAZARLAMA SANAYİ VE","borc":0,"alacak":415.0,"bakiye":6682.7},{"no":347,"tarih":"27.04.2026","aciklama":"FİŞ NO:0009 SEBAHATTİN KAHRAMAN GARDEN ÇOTANA","borc":0,"alacak":350.0,"bakiye":6332.7},{"no":348,"tarih":"28.04.2026","aciklama":"FİŞ NO:0020 DİDİM HATAY KEBAP SAN. TİC. LTD. ŞTİ","borc":0,"alacak":250.0,"bakiye":6082.7},{"no":349,"tarih":"29.04.2026","aciklama":"FİŞ NO:0058 MANİSA HD GIDA PAZARLAMA SANAYİ VE T","borc":0,"alacak":415.0,"bakiye":5667.7},{"no":350,"tarih":"30.04.2026","aciklama":"FİŞ NO:0039 BÜNYAMİN ALTIN ALTIN KARDEŞLER LOK","borc":0,"alacak":460.0,"bakiye":5207.7},{"no":351,"tarih":"04.05.2026","aciklama":"FİŞ NO:0011 GÜLCAN ÖZSELYAN DAMAK TADI LOKANTA","borc":0,"alacak":230.0,"bakiye":4977.7},{"no":352,"tarih":"06.05.2026","aciklama":"FİŞ NO:2 METİN YENİKAYA BUSE OTO YIKAMA","borc":0,"alacak":700.0,"bakiye":4277.7},{"no":353,"tarih":"06.05.2026","aciklama":"FİŞ NO:0064 BÜNYAMİN ALTIN ALTIN KARDEŞLER LOK","borc":0,"alacak":440.0,"bakiye":3837.7},{"no":354,"tarih":"07.05.2026","aciklama":"NO:0128 ŞABAN BARIŞÇI 1990 ŞABAN USTANIN FİŞ","borc":0,"alacak":420.0,"bakiye":3417.7},{"no":355,"tarih":"08.05.2026","aciklama":"FİŞ NO:0007 MANULAS MANİSA ULAŞIM HİZ. MAK. SAN.","borc":0,"alacak":190.0,"bakiye":3227.7},{"no":356,"tarih":"08.05.2026","aciklama":"FİŞ NO:0019 RABIA KAPLAN PRATİK KAVURMACI","borc":0,"alacak":410.0,"bakiye":2817.7},{"no":357,"tarih":"11.05.2026","aciklama":"FİŞ NO:0027 SITKI ŞİMŞEK RODOP KÖFTE","borc":0,"alacak":480.0,"bakiye":2337.7},{"no":358,"tarih":"13.05.2026","aciklama":"FİŞ NO:0009 SEBAHATTİN KAHRAMAN GARDEN ÇOTANAK","borc":0,"alacak":245.0,"bakiye":2092.7},{"no":359,"tarih":"15.05.2026","aciklama":"FİŞ NO: 9 RABIA KAPLAN PRATİK KAVURMACI","borc":0,"alacak":410.0,"bakiye":1682.7},{"no":360,"tarih":"20.05.2026","aciklama":"FİŞ NO 6 EGEMER DIŞ TİC.GIDA","borc":0,"alacak":800.0,"bakiye":882.7},{"no":361,"tarih":"21.05.2026","aciklama":"FİŞ NO 16 OĞUZ ALP ŞAHİNKAYA MAVV MAKİNA VE","borc":0,"alacak":280.0,"bakiye":602.7},{"no":362,"tarih":"21.05.2026","aciklama":"FİŞ NO 131 MOS LOJİSTİK HİZMETLERİ A.Ş.","borc":0,"alacak":130.0,"bakiye":472.7},{"no":363,"tarih":"22.05.2026","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":5472.7},{"no":364,"tarih":"22.05.2026","aciklama":"FİŞ NO 6 NECMİ AYDOĞAN BEĞENDİK KÖFTE","borc":0,"alacak":590.0,"bakiye":4882.7},{"no":365,"tarih":"01.06.2026","aciklama":"FİŞ NO: 4 METİN YENİKAYA BUSE OTO YIKAMA","borc":0,"alacak":700.0,"bakiye":4182.7},{"no":366,"tarih":"01.06.2026","aciklama":"FİŞ NO: 43 BÜNYAMİN ALTIN ALTIN KARDEŞLER LOK","borc":0,"alacak":510.0,"bakiye":3672.7},{"no":367,"tarih":"02.06.2026","aciklama":"FİŞ NO 221 ATARLAR PETROL ÜRN.LTD.ŞTİ.","borc":0,"alacak":265.0,"bakiye":3407.7},{"no":368,"tarih":"03.06.2026","aciklama":"NO 83532 TAB GIDA SANAYİ TİCARET A.Ş.  FİŞ","borc":0,"alacak":340.0,"bakiye":3067.7},{"no":369,"tarih":"04.06.2026","aciklama":"FİŞ  NO: 9 MANULAŞ MANİSA ULAŞIM SAN.TİC.AŞ.","borc":0,"alacak":190.0,"bakiye":2877.7},{"no":370,"tarih":"04.06.2026","aciklama":"NO: 77 HAKAN SÖZER İNEGÖL KÖFTECİSİ FİŞ","borc":0,"alacak":400.0,"bakiye":2477.7},{"no":371,"tarih":"05.06.2026","aciklama":"MANULAŞ MANİSA ULAŞIM HİZMETLERİ SAN 17 NO FİŞ","borc":0,"alacak":190.0,"bakiye":2287.7},{"no":372,"tarih":"05.06.2026","aciklama":"MELİK DENİZLİ DÜRÜMCÜ YUSUF 28 NO FİŞ","borc":0,"alacak":240.0,"bakiye":2047.7},{"no":373,"tarih":"08.06.2026","aciklama":"İNEGÖL KÖFTECİSİ HAKAN SÖZER  FİŞ NO 66","borc":0,"alacak":400.0,"bakiye":1647.7},{"no":374,"tarih":"09.06.2026","aciklama":"8 FİŞ NO  MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":150.0,"bakiye":1497.7},{"no":375,"tarih":"09.06.2026","aciklama":"NO: 51 BÜNYAMİN ALTIN ALTIN KARDEŞLER FİŞ","borc":0,"alacak":510.0,"bakiye":987.7},{"no":376,"tarih":"10.06.2026","aciklama":"NO ALİ MENGÜK FA  FİŞ 30","borc":0,"alacak":570.0,"bakiye":417.7},{"no":377,"tarih":"11.06.2026","aciklama":"FİŞ NO 32 THE NEXT GIDA İŞLETMELERİ A.Ş.","borc":0,"alacak":419.0,"bakiye":-1.3},{"no":378,"tarih":"15.06.2026","aciklama":"FİŞ NO: 5 RABIA KAPLAN PRATİK KAVURMACI","borc":0,"alacak":410.0,"bakiye":-411.3},{"no":379,"tarih":"16.06.2026","aciklama":"FİŞ NO 62 ŞABAN BARIŞÇI 1990 ŞABAN USTANIN Y","borc":0,"alacak":450.0,"bakiye":-861.3},{"no":380,"tarih":"17.06.2026","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":4138.7},{"no":381,"tarih":"17.06.2026","aciklama":"FİŞ NO: 9 MEHMET TOPAY LTD.ŞTİ.","borc":0,"alacak":450.0,"bakiye":3688.7},{"no":382,"tarih":"18.06.2026","aciklama":"ALI MENGÜL FA KEBAP FİŞ NO: 57","borc":0,"alacak":540.0,"bakiye":3148.7},{"no":383,"tarih":"19.06.2026","aciklama":"ΕΜΕKTAR KEBAP SAN.TİC.A.Ş. FİŞ NO 16","borc":0,"alacak":850.0,"bakiye":2298.7},{"no":384,"tarih":"23.06.2026","aciklama":"FİŞ NO: 20 BÜNYAMİN ALTIN ALTIN KARDEŞLER","borc":0,"alacak":530.0,"bakiye":1768.7},{"no":385,"tarih":"24.06.2026","aciklama":"FİŞ NO 335 MNT PET PETROL ÜRÜNLERİ LTD.ŞTİ.","borc":0,"alacak":325.0,"bakiye":1443.7},{"no":386,"tarih":"25.06.2026","aciklama":"FİŞ NO 323 KAR PETROLLERİ SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":230.0,"bakiye":1213.7},{"no":387,"tarih":"26.06.2026","aciklama":"FİŞ NO 8 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":190.0,"bakiye":1023.7},{"no":388,"tarih":"26.06.2026","aciklama":"FİŞ NO 57 LEO SAPIENS GIDA SAN.","borc":0,"alacak":510.0,"bakiye":513.7},{"no":389,"tarih":"29.06.2026","aciklama":"FİŞ NO: 4 METİN YENİKAYA BUSE OT YIKAMA","borc":0,"alacak":700.0,"bakiye":-186.3},{"no":390,"tarih":"29.06.2026","aciklama":"FİŞ NO: 21 CAMİA DÖNER MERVE ÇAKIR","borc":0,"alacak":490.0,"bakiye":-676.3},{"no":391,"tarih":"30.06.2026","aciklama":"FİŞ NO: 16 BÌ TENCERE","borc":0,"alacak":570.0,"bakiye":-1246.3},{"no":392,"tarih":"01.07.2026","aciklama":"FİŞ NO 108 ŞABAN BARIŞÇI 1990 ŞABAN USTANIN","borc":0,"alacak":470.0,"bakiye":-1716.3},{"no":393,"tarih":"02.07.2026","aciklama":"FİŞ NO 63 ANADOLU KARYA GIDA İNŞ.","borc":0,"alacak":350.0,"bakiye":-2066.3},{"no":394,"tarih":"03.07.2026","aciklama":"FİŞ NO 22 ÜRFET YAPI GIDA ÜR.LTD.ŞTİ.","borc":0,"alacak":359.9,"bakiye":-2426.2},{"no":395,"tarih":"06.07.2026","aciklama":"FİŞ NO 3 UMUT GÜNEŞ - DÜRÜMCÜ ŞERİF","borc":0,"alacak":260.0,"bakiye":-2686.2},{"no":396,"tarih":"07.07.2026","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":10000.0,"alacak":0,"bakiye":7313.8},{"no":397,"tarih":"07.07.2026","aciklama":"FİŞ NO 252 MOS LOJİSTİK HİZMETLERİ A.Ş.","borc":0,"alacak":194.0,"bakiye":7119.8},{"no":398,"tarih":"08.07.2026","aciklama":"BELGE NO 9323 CANSEL TEYYAR TİRYAKİ DÖNER","borc":0,"alacak":300.0,"bakiye":6819.8},{"no":399,"tarih":"08.07.2026","aciklama":"FİŞ NO 109 THE NEXT GIDA İŞLETMELERİ A.Ş.","borc":0,"alacak":460.0,"bakiye":6359.8},{"no":400,"tarih":"08.07.2026","aciklama":"FİŞ NO F-099255 TAV EGE TERMINAL YATIRIM A.Ş.","borc":0,"alacak":230.0,"bakiye":6129.8},{"no":401,"tarih":"09.07.2026","aciklama":"BELGE NO: W6X2026000026213 BLENDBLACK COFFEE FA","borc":0,"alacak":360.0,"bakiye":5769.8},{"no":402,"tarih":"09.07.2026","aciklama":"FİŞ NO: 93 MANİSA TAYLAN GIDA SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":565.0,"bakiye":5204.8},{"no":403,"tarih":"10.07.2026","aciklama":"FİŞ NO 25 MERVE ÇAKIR CAMIA DÖNER","borc":0,"alacak":490.0,"bakiye":4714.8},{"no":404,"tarih":"13.07.2026","aciklama":"FİŞ NO: 52 BÜNYAMİN ALTIN ALTIN KARDEŞLER LOK","borc":0,"alacak":440.0,"bakiye":4274.8},{"no":405,"tarih":"13.07.2026","aciklama":"FİŞ NO 12 BEAN VE BEAM GIDA İNŞ.SAN.TİC.A.Ş.","borc":0,"alacak":230.0,"bakiye":4044.8},{"no":406,"tarih":"14.07.2026","aciklama":"FİŞ NO 10 MELİK DENİZLİ DÜRÜMCÜ YUSUF","borc":0,"alacak":280.0,"bakiye":3764.8},{"no":407,"tarih":"20.07.2026","aciklama":"FİŞ NO 54 ŞABAN BARIŞÇI 1990 ŞABAN USTANIN Y","borc":0,"alacak":450.0,"bakiye":3314.8},{"no":408,"tarih":"21.07.2026","aciklama":"FİŞ NO 43 BARIŞ DÖNER ZEYFETTİN KIRAÇ","borc":0,"alacak":380.0,"bakiye":2934.8},{"no":409,"tarih":"22.07.2026","aciklama":"W6X2026000027886 BLENDBLACK COFFEE FACTORY","borc":0,"alacak":160.0,"bakiye":2774.8},{"no":410,"tarih":"22.07.2026","aciklama":"FİŞ NO 31 KAĞIR KÖFTE ALİ BABA","borc":0,"alacak":640.0,"bakiye":2134.8},{"no":411,"tarih":"23.07.2026","aciklama":"FİŞ NO: 28 BÜNYAMİN ALTIN ALTIN KARDEŞLER","borc":0,"alacak":510.0,"bakiye":1624.8},{"no":412,"tarih":"23.07.2026","aciklama":"BELGE NO WGR2026000154898 MANULAŞ MANİSA SAN.T","borc":0,"alacak":190.0,"bakiye":1434.8},{"no":413,"tarih":"24.07.2026","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":6434.8},{"no":414,"tarih":"24.07.2026","aciklama":"AKTUR ARAÇ MUAYENE İSTASYONLARI İŞLETMECİLİĞİ A.","borc":0,"alacak":3908.04,"bakiye":2526.76},{"no":415,"tarih":"24.07.2026","aciklama":"FİŞ NO 22 AKTUR ARAÇ MUAYENE A.Ş.","borc":0,"alacak":200.0,"bakiye":2326.76},{"no":416,"tarih":"24.07.2026","aciklama":"FİŞ NO 3 HAN OTO AKSESUAR & ELEKTRİK SEŞMİNA","borc":0,"alacak":450.0,"bakiye":1876.76},{"no":417,"tarih":"24.07.2026","aciklama":"FİŞ NO 2 HAN OTO AKSESUAR & ELEKTRİK","borc":0,"alacak":450.0,"bakiye":1426.76},{"no":418,"tarih":"29.07.2026","aciklama":"ΒΑΝKA (BANKA DİĞER ÖDEMELER)","borc":5000.0,"alacak":0,"bakiye":6426.76},{"no":419,"tarih":"29.07.2026","aciklama":"BELGE NO 101039 KÖFTECİ YUSUF SAN.TİC.A.Ş.","borc":0,"alacak":880.0,"bakiye":5546.76},{"no":420,"tarih":"30.07.2026","aciklama":"BELGE NO 155193 MANULAŞ MANİSA SAN.TİC.A.Ş.","borc":0,"alacak":190.0,"bakiye":5356.76},{"no":421,"tarih":"30.07.2026","aciklama":"FİŞ NO: 8 BEAN VE BEAM SAN.TİC.A.Ş.","borc":0,"alacak":150.0,"bakiye":5206.76},{"no":422,"tarih":"31.07.2026","aciklama":"FİŞ NO 11 ÜRFET YAPI LTD.ŞTİ.","borc":0,"alacak":389.9,"bakiye":4816.86},{"no":423,"tarih":"03.08.2026","aciklama":"FİŞ NO: 8 MELİK DENİZLİ DÜRÜMCÜ YUSUF","borc":0,"alacak":260.0,"bakiye":4556.86},{"no":424,"tarih":"03.08.2026","aciklama":"FİŞ NO 41 ÖMER TOPBAŞ","borc":0,"alacak":120.0,"bakiye":4436.86},{"no":425,"tarih":"03.08.2026","aciklama":"FİŞ NO 2 METİN YENİKAYA BUSE OTO YIKAMA","borc":0,"alacak":700.0,"bakiye":3736.86},{"no":426,"tarih":"04.08.2026","aciklama":"FİŞ NO 106 ŞABAN BARISCI 1990 ŞABAN USTANIN","borc":0,"alacak":450.0,"bakiye":3286.86},{"no":427,"tarih":"05.08.2026","aciklama":"FİŞ NO 34 CAMÍA DÖNER MERVE ÇAKIR","borc":0,"alacak":770.0,"bakiye":2516.86},{"no":428,"tarih":"06.08.2026","aciklama":"FİŞ NO 207 TORBALI PETROL SAN.TİC.LTD.ŞTİ.","borc":0,"alacak":290.0,"bakiye":2226.86},{"no":429,"tarih":"07.08.2026","aciklama":"FİŞ NO  28 OLGUN OTO ELEKTRİK","borc":0,"alacak":300.0,"bakiye":1926.86},{"no":430,"tarih":"07.08.2026","aciklama":"FİŞ NO 38 OLGUN OTO ELEKTRİK","borc":0,"alacak":1000.0,"bakiye":926.86},{"no":431,"tarih":"07.08.2026","aciklama":"BELGE NO: 80466 TAB GIDA SAN.TİC.A. S.","borc":0,"alacak":350.0,"bakiye":576.86},{"no":432,"tarih":"10.08.2026","aciklama":"ΒΑΝΚΑ (BANKA DİĞER ÖDEMELER)","borc":20000.0,"alacak":0,"bakiye":20576.86},{"no":433,"tarih":"10.08.2026","aciklama":"OTEL OLİMPOS","borc":0,"alacak":4000.0,"bakiye":16576.86},{"no":434,"tarih":"13.08.2026","aciklama":"GÖK-SAN İNŞ.ELEK.TEKS.SİS.SAN.LTD.ŞTİ.","borc":0,"alacak":7000.0,"bakiye":9576.86},{"no":435,"tarih":"10.08.2026","aciklama":"","borc":0,"alacak":600.0,"bakiye":8976.86},{"no":436,"tarih":"11.08.2026","aciklama":"","borc":0,"alacak":550.0,"bakiye":8426.86},{"no":437,"tarih":"11.08.2026","aciklama":"","borc":0,"alacak":160.0,"bakiye":8266.86},{"no":438,"tarih":"11.08.2026","aciklama":"","borc":0,"alacak":630.0,"bakiye":7636.86},{"no":439,"tarih":"12.08.2026","aciklama":"","borc":0,"alacak":855.0,"bakiye":6781.86},{"no":440,"tarih":"12.08.2026","aciklama":"","borc":0,"alacak":480.0,"bakiye":6301.86},{"no":441,"tarih":"14.08.2026","aciklama":"","borc":0,"alacak":660.0,"bakiye":5641.86},{"no":442,"tarih":"18.08.2026","aciklama":"","borc":0,"alacak":345.0,"bakiye":5296.86},{"no":443,"tarih":"19.08.2026","aciklama":"","borc":0,"alacak":160.0,"bakiye":5136.86},{"no":444,"tarih":"20.08.2026","aciklama":"","borc":0,"alacak":280.0,"bakiye":4856.86},{"no":445,"tarih":"21.08.2026","aciklama":"","borc":0,"alacak":390.0,"bakiye":4466.86},{"no":446,"tarih":"31.08.2026","aciklama":"","borc":0,"alacak":530.0,"bakiye":3936.86},{"no":447,"tarih":"01.09.2026","aciklama":"YEMEK","borc":0,"alacak":190.0,"bakiye":3746.86},{"no":448,"tarih":"01.09.2026","aciklama":"YEMEK","borc":0,"alacak":160.0,"bakiye":3586.86},{"no":449,"tarih":"04.09.2026","aciklama":"OTOPARK","borc":0,"alacak":190.0,"bakiye":3396.86},{"no":450,"tarih":"04.09.2026","aciklama":"YEMEK","borc":0,"alacak":500.0,"bakiye":2896.86}];
-
-let masrafKayitlari = [];
-
-
-function masrafSonBakiye() {
-  if (masrafKayitlari.length === 0) return 0;
-  return masrafKayitlari[masrafKayitlari.length - 1].bakiye;
+function mxTemiz(k) {
+  const t = {};
+  Object.keys(k).forEach(a => { if (a[0] !== '_') t[a] = k[a]; });
+  return t;
 }
 
-function masrafSonNo() {
-  if (masrafKayitlari.length === 0) return 0;
-  const numaralar = masrafKayitlari.map(k => k.no || 0);
-  return Math.max(...numaralar);
+function mxBekleyenSayisi() {
+  return Object.values(mxKayitlar).filter(k => k._bekliyor).length;
 }
 
-function masrafBugununTarihi() {
+// ── Yardımcılar ──
+function mxBugunISO() {
   const d = new Date();
-  const gg = String(d.getDate()).padStart(2, '0');
-  const aa = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  return `${gg}.${aa}.${yyyy}`;
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function mxTarihGoster(iso) {
+  const [y, m, d] = (iso || '').split('-');
+  return d && m && y ? `${d}.${m}.${y}` : iso;
+}
+
+// "245,50" / "1.245,50" / "1245.5" / "1.245" → sayı
+function mxTutarOku(s) {
+  let t = String(s || '').replace(/[\s₺TLtl]/g, '');
+  if (!t) return 0;
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+  const n = Number(t);
+  return isFinite(n) ? Math.round(n * 100) / 100 : NaN;
 }
 
 function formatMasrafTutar(v) {
-  return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
+  return (v || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
 }
 
+function mxEsc(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function mxYeniId() {
+  return 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function mxIsaret(k) { return k.tip === 'fis' ? -1 : 1; }
+
+// Tarihe göre sıralı liste + yürüyen bakiye (silinenler bakiyeye katılmaz)
+function mxEkstre() {
+  const liste = Object.values(mxKayitlar).sort((a, b) =>
+    a.tarih < b.tarih ? -1 : a.tarih > b.tarih ? 1 : (a.olusturma || 0) - (b.olusturma || 0));
+  let bakiye = 0, toplamAvans = 0, toplamFis = 0, fisSayisi = 0;
+  const satirlar = liste.map(k => {
+    if (!k.silindi) {
+      bakiye = Math.round((bakiye + mxIsaret(k) * k.tutar) * 100) / 100;
+      if (k.tip === 'fis') { toplamFis += k.tutar; fisSayisi++; } else toplamAvans += k.tutar;
+    }
+    return { k, bakiye: k.silindi ? null : bakiye };
+  });
+  return {
+    satirlar, bakiye,
+    toplamAvans: Math.round(toplamAvans * 100) / 100,
+    toplamFis: Math.round(toplamFis * 100) / 100,
+    fisSayisi
+  };
+}
+
+// ── Firebase ──
+function mxFirebaseBaslat() {
+  if (mxSdkVar) return;
+  try {
+    if (!window.firebase || !firebase.firestore || !firebase.auth) return;
+    const app = firebase.apps.find(a => a.name === 'masraf') || firebase.initializeApp(MX_FIREBASE_CONFIG, 'masraf');
+    mxDb = app.firestore();
+    mxAuth = app.auth();
+    mxSdkVar = true;
+    mxAuth.onAuthStateChanged(u => {
+      if (u && (u.email || '').toLowerCase() !== MX_SAHIP_EMAIL) {
+        mxAuth.signOut();
+        alert('Bu hesap masraf ekstresine yetkili değil: ' + u.email);
+        return;
+      }
+      mxKullanici = u;
+      if (u) mxDinlemeyeBasla(); else mxDinlemeyiDurdur();
+      mxDurumGoster();
+    });
+  } catch (e) {
+    console.warn('[Masraf] Firebase başlatılamadı, sadece telefonda saklanacak:', e);
+    mxSdkVar = false;
+  }
+}
+
+// Sayfa internetsiz açıldıysa Firebase kütüphanesi yüklenemez; bağlantı gelince yükle
+function mxSdkYukle() {
+  if (window.firebase && firebase.firestore && firebase.auth) { mxFirebaseBaslat(); return; }
+  if (document.getElementById('mxSdkScript')) return;
+  const sirali = ['firebase-app-compat.js', 'firebase-auth-compat.js', 'firebase-firestore-compat.js'];
+  const yukle = i => {
+    if (i >= sirali.length) { mxFirebaseBaslat(); mxDurumGoster(); return; }
+    const s = document.createElement('script');
+    if (i === 0) s.id = 'mxSdkScript';
+    s.src = 'https://www.gstatic.com/firebasejs/10.12.2/' + sirali[i];
+    s.onload = () => yukle(i + 1);
+    s.onerror = () => { const x = document.getElementById('mxSdkScript'); if (x) x.remove(); };
+    document.head.appendChild(s);
+  };
+  yukle(window.firebase ? 1 : 0);
+}
+
+function mxDinlemeyeBasla() {
+  if (mxDinleyici || !mxDb) return;
+  mxDinleyici = mxDb.collection(MX_KOLEKSIYON).onSnapshot({ includeMetadataChanges: true }, snap => {
+    let degisti = false;
+    snap.docs.forEach(d => {
+      if (d.metadata.hasPendingWrites) return; // kendi gönderdiğimiz, henüz onaylanmamış
+      const r = d.data();
+      const l = mxKayitlar[d.id];
+      if (!l || !l._bekliyor || (r.guncelleme || 0) >= (l.guncelleme || 0)) {
+        if (!l || l._bekliyor || JSON.stringify(mxTemiz(l)) !== JSON.stringify(r)) {
+          mxKayitlar[d.id] = r;
+          degisti = true;
+        }
+      }
+    });
+    mxBulutHata = '';
+    if (!snap.metadata.fromCache && !mxIlkSenkron) { mxIlkSenkron = true; degisti = true; }
+    if (degisti) { mxDepoYaz(); renderMasrafListesi(); }
+    mxDurumGoster();
+    mxGonder();
+  }, err => {
+    console.warn('[Masraf] bulut dinleme hatası:', err);
+    mxBulutHata = err.code === 'permission-denied' ? 'Bulut erişimi reddedildi (yetki)' : 'Bulut hatası: ' + (err.code || err.message);
+    mxDinleyici = null;
+    mxIlkSenkron = false;
+    mxDurumGoster();
+  });
+}
+
+function mxDinlemeyiDurdur() {
+  if (mxDinleyici) { mxDinleyici(); mxDinleyici = null; }
+  mxIlkSenkron = false;
+}
+
+// Bekleyen kayıtları tek tek buluta gönder
+function mxGonder() {
+  if (!mxDb || !mxKullanici || !mxIlkSenkron) return;
+  Object.values(mxKayitlar).filter(k => k._bekliyor).forEach(k => {
+    const surum = k.guncelleme;
+    const anahtar = k.id + '@' + surum;
+    if (mxGonderimde.has(anahtar)) return;
+    mxGonderimde.add(anahtar);
+    mxDb.collection(MX_KOLEKSIYON).doc(k.id).set(mxTemiz(k))
+      .then(() => {
+        const g = mxKayitlar[k.id];
+        if (g && g.guncelleme === surum) { delete g._bekliyor; delete g._hata; mxDepoYaz(); }
+        renderMasrafListesi();
+      })
+      .catch(e => {
+        console.warn('[Masraf] buluta yazılamadı:', k.id, e);
+        const g = mxKayitlar[k.id];
+        if (g) g._hata = e.code || 'hata';
+        mxBulutHata = 'Bir kayıt buluta yazılamadı: ' + (e.code || e.message);
+        mxDurumGoster();
+      })
+      .finally(() => mxGonderimde.delete(anahtar));
+  });
+}
+
+function mxDurumGoster() {
+  const nokta = document.getElementById('mxBulutNokta');
+  const yazi = document.getElementById('mxBulutYazi');
+  if (!nokta || !yazi) return;
+  const bekleyen = mxBekleyenSayisi();
+  let renk, metin;
+  if (!mxSdkVar) {
+    renk = 'turuncu';
+    metin = navigator.onLine ? 'Bulut bağlantısı kuruluyor…' : 'İnternet yok — kayıtlar telefonda saklanıyor' + (bekleyen ? ` (${bekleyen} bekliyor)` : '');
+  } else if (!mxKullanici) {
+    renk = 'turuncu';
+    metin = 'Buluta bağlı değil — giriş yapmak için dokun' + (bekleyen ? ` (${bekleyen} kayıt bekliyor)` : '');
+  } else if (mxBulutHata) {
+    renk = 'kirmizi';
+    metin = mxBulutHata + (bekleyen ? ` — ${bekleyen} kayıt telefonda bekliyor` : '');
+  } else if (!navigator.onLine) {
+    renk = 'turuncu';
+    metin = 'İnternet yok — ' + (bekleyen ? `${bekleyen} kayıt telefonda bekliyor, bağlantı gelince gönderilecek` : 'tüm kayıtlar zaten bulutta');
+  } else if (bekleyen) {
+    renk = 'turuncu';
+    metin = `${bekleyen} kayıt buluta gönderiliyor…`;
+  } else if (!mxIlkSenkron) {
+    renk = 'turuncu';
+    metin = 'Bulutla eşitleniyor…';
+  } else {
+    renk = 'yesil';
+    metin = 'Tüm kayıtlar bulutta ✓';
+  }
+  nokta.className = 'mx-bulut-nokta ' + renk;
+  yazi.textContent = metin;
+}
+
+function mxBulutTikla() {
+  if (!mxSdkVar) { mxSdkYukle(); return; }
+  const form = document.getElementById('mxGirisForm');
+  if (mxKullanici) {
+    if (confirm('Buluta ' + mxKullanici.email + ' ile bağlısın.\n\nBu cihazda oturumu kapatmak istiyor musun? (Kayıtlar silinmez.)')) mxAuth.signOut();
+    return;
+  }
+  form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+  const em = document.getElementById('mxGirisEmail');
+  if (!em.value) em.value = MX_SAHIP_EMAIL;
+}
+
+function mxAuthHataMetni(e) {
+  const c = e && e.code || '';
+  if (c === 'auth/invalid-credential' || c === 'auth/wrong-password' || c === 'auth/user-not-found' || c === 'auth/invalid-login-credentials')
+    return 'E-posta veya şifre hatalı. (Daha önce hesap oluşturmadıysan "İlk kez: hesap oluştur"a bas.)';
+  if (c === 'auth/email-already-in-use') return 'Bu e-posta ile hesap zaten var — "Giriş yap"ı kullan.';
+  if (c === 'auth/weak-password') return 'Şifre en az 6 karakter olmalı.';
+  if (c === 'auth/network-request-failed') return 'İnternet bağlantısı yok. Bağlanınca tekrar dene.';
+  if (c === 'auth/operation-not-allowed' || c === 'auth/configuration-not-found')
+    return 'Firebase\'de E-posta/Şifre girişi henüz açılmamış (Authentication → Sign-in method).';
+  if (c === 'auth/too-many-requests') return 'Çok fazla deneme yapıldı, birkaç dakika sonra tekrar dene.';
+  return 'Giriş yapılamadı: ' + (c || (e && e.message));
+}
+
+function mxGirisBilgileri() {
+  const email = document.getElementById('mxGirisEmail').value.trim().toLowerCase();
+  const sifre = document.getElementById('mxGirisSifre').value;
+  if (email !== MX_SAHIP_EMAIL) { alert('Bu ekstre sadece ' + MX_SAHIP_EMAIL + ' hesabıyla kullanılabilir.'); return null; }
+  if (!sifre) { alert('Lütfen şifreni gir.'); return null; }
+  return { email, sifre };
+}
+
+function mxGirisYap() {
+  const b = mxGirisBilgileri(); if (!b) return;
+  mxAuth.signInWithEmailAndPassword(b.email, b.sifre)
+    .then(() => { document.getElementById('mxGirisForm').style.display = 'none'; document.getElementById('mxGirisSifre').value = ''; })
+    .catch(e => alert(mxAuthHataMetni(e)));
+}
+
+function mxHesapOlustur() {
+  const b = mxGirisBilgileri(); if (!b) return;
+  if (!confirm('"' + b.email + '" için yeni bir bulut hesabı oluşturulacak.\nBu şifreyi not al — diğer cihazlarda da aynı şifreyle gireceksin.\n\nDevam?')) return;
+  mxAuth.createUserWithEmailAndPassword(b.email, b.sifre)
+    .then(() => { document.getElementById('mxGirisForm').style.display = 'none'; document.getElementById('mxGirisSifre').value = ''; })
+    .catch(e => alert(mxAuthHataMetni(e)));
+}
+
+// ── Modal & form ──
 function openMasrafModal() {
   document.getElementById('masrafOverlay').classList.add('show');
-  document.getElementById('masrafFormAvans').style.display = 'none';
-  document.getElementById('masrafFormFis').style.display = 'none';
+  mxFormKapat();
+  if (!mxSdkVar && navigator.onLine) mxSdkYukle();
   renderMasrafListesi();
 }
 
@@ -4036,194 +4267,244 @@ function closeMasrafOnOverlay(e) {
   }
 }
 
-function toggleMasrafForm(tip) {
-  const avansForm = document.getElementById('masrafFormAvans');
-  const fisForm = document.getElementById('masrafFormFis');
-  if (tip === 'avans') {
-    avansForm.style.display = avansForm.style.display === 'none' ? 'flex' : 'none';
-    fisForm.style.display = 'none';
+function mxFormAc(tip, id) {
+  const form = document.getElementById('mxForm');
+  const tipSec = document.getElementById('mxFormTip');
+  mxDuzenlenenId = id || null;
+  if (id) {
+    const k = mxKayitlar[id];
+    if (!k) return;
+    document.getElementById('mxFormBaslik').textContent = k.tip === 'acilis' ? 'Açılış Avansını Düzenle' : 'Kaydı Düzenle';
+    tipSec.style.display = k.tip === 'acilis' ? 'none' : '';
+    tipSec.value = k.tip === 'fis' ? 'fis' : 'avans';
+    document.getElementById('mxFormTarih').value = k.tarih;
+    document.getElementById('mxFormTutar').value = k.tutar.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById('mxFormAciklama').value = k.aciklama;
+    document.getElementById('mxFormKaydetBtn').textContent = 'Değişikliği Kaydet';
   } else {
-    fisForm.style.display = fisForm.style.display === 'none' ? 'flex' : 'none';
-    avansForm.style.display = 'none';
+    // Aynı tip açıksa kapat (toggle)
+    if (form.style.display !== 'none' && !mxDuzenlenenId && tipSec.value === tip) { mxFormKapat(); return; }
+    document.getElementById('mxFormBaslik').textContent = tip === 'fis' ? 'Fiş Ekle (avanstan düşer)' : 'Avans Ekle (avansa eklenir)';
+    tipSec.style.display = 'none';
+    tipSec.value = tip;
+    document.getElementById('mxFormTarih').value = mxBugunISO();
+    document.getElementById('mxFormTutar').value = '';
+    document.getElementById('mxFormAciklama').value = '';
+    document.getElementById('mxFormAciklama').placeholder = tip === 'fis' ? 'Açıklama (örn: Fiş No 5 Kardeşler Lokantası)' : 'Açıklama (örn: Banka / Elden)';
+    document.getElementById('mxFormKaydetBtn').textContent = tip === 'fis' ? 'Fişi Kaydet' : 'Avansı Kaydet';
   }
+  form.classList.toggle('fis', tipSec.value === 'fis');
+  form.style.display = 'flex';
+  setTimeout(() => document.getElementById('mxFormTutar').focus(), 50);
 }
 
-function avansEkleKaydet() {
-  const tutarEl = document.getElementById('avansTutar');
-  const aciklamaEl = document.getElementById('avansAciklama');
-  const tutar = parseFloat(tutarEl.value);
-  if (!tutar || tutar <= 0) { alert('Lütfen geçerli bir avans tutarı girin.'); return; }
+function mxFormKapat() {
+  mxDuzenlenenId = null;
+  document.getElementById('mxForm').style.display = 'none';
+}
 
-  const yeniBakiye = Math.round((masrafSonBakiye() + tutar) * 100) / 100;
-  masrafKayitlari.push({
-    no: masrafSonNo() + 1,
-    tarih: masrafBugununTarihi(),
-    aciklama: aciklamaEl.value.trim() || 'AVANS',
-    borc: tutar,
-    alacak: 0,
-    bakiye: yeniBakiye
-  });
-  masrafKaydet();
-  tutarEl.value = '';
-  aciklamaEl.value = '';
-  document.getElementById('masrafFormAvans').style.display = 'none';
+function mxFormKaydet() {
+  const tip = document.getElementById('mxFormTip').value;
+  const tarih = document.getElementById('mxFormTarih').value;
+  const tutar = mxTutarOku(document.getElementById('mxFormTutar').value);
+  const aciklama = document.getElementById('mxFormAciklama').value.trim();
+
+  if (!tutar || isNaN(tutar) || tutar <= 0) { alert('Lütfen geçerli bir tutar girin (örn: 245,50).'); return; }
+  if (tutar >= 1000000) { alert('Tutar çok büyük görünüyor, lütfen kontrol edin.'); return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(tarih)) { alert('Lütfen tarih seçin.'); return; }
+  if (tarih < MX_BASLANGIC_TARIHI && !confirm('Seçilen tarih ekstre başlangıcından (16.09.2026) önce. Yine de kaydedilsin mi?')) return;
+  if (tarih > mxBugunISO() && !confirm('Seçilen tarih ileri bir tarih (' + mxTarihGoster(tarih) + '). Doğru mu?')) return;
+
+  const simdi = Date.now();
+  if (mxDuzenlenenId) {
+    const k = mxKayitlar[mxDuzenlenenId];
+    if (!k) return;
+    const onceki = (k.onceki || []).slice(-9);
+    onceki.push({ tip: k.tip, tarih: k.tarih, tutar: k.tutar, aciklama: k.aciklama, guncelleme: k.guncelleme });
+    Object.assign(k, {
+      tip: k.tip === 'acilis' ? 'acilis' : tip, tarih, tutar,
+      aciklama: aciklama || k.aciklama, onceki, guncelleme: simdi, _bekliyor: true
+    });
+    delete k._hata;
+    mxDepoYaz();
+    mxFormKapat();
+  } else {
+    const id = mxYeniId();
+    mxKayitlar[id] = {
+      id, tip, tarih, tutar,
+      aciklama: aciklama || (tip === 'fis' ? 'FİŞ' : 'AVANS'),
+      olusturma: simdi, guncelleme: simdi, silindi: false, _bekliyor: true
+    };
+    mxDepoYaz();
+    // Form açık kalsın: art arda fiş girilebilsin (tarih korunur)
+    document.getElementById('mxFormTutar').value = '';
+    document.getElementById('mxFormAciklama').value = '';
+    document.getElementById('mxFormTutar').focus();
+    mxBildir((tip === 'fis' ? 'Fiş kaydedildi: −' : 'Avans kaydedildi: +') + formatMasrafTutar(tutar));
+  }
   renderMasrafListesi();
+  mxGonder();
 }
 
-function fisEkleKaydet() {
-  const tutarEl = document.getElementById('fisTutar');
-  const aciklamaEl = document.getElementById('fisAciklama');
-  const tutar = parseFloat(tutarEl.value);
-  if (!tutar || tutar <= 0) { alert('Lütfen geçerli bir fiş tutarı girin.'); return; }
-
-  const yeniBakiye = Math.round((masrafSonBakiye() - tutar) * 100) / 100;
-  masrafKayitlari.push({
-    no: masrafSonNo() + 1,
-    tarih: masrafBugununTarihi(),
-    aciklama: aciklamaEl.value.trim() || 'FİŞ',
-    borc: 0,
-    alacak: tutar,
-    bakiye: yeniBakiye
-  });
-  masrafKaydet();
-  tutarEl.value = '';
-  aciklamaEl.value = '';
-  document.getElementById('masrafFormFis').style.display = 'none';
+function mxSilGeriAl(id) {
+  const k = mxKayitlar[id];
+  if (!k || k.tip === 'acilis') return;
+  if (!k.silindi && !confirm('Bu kaydı silmek istiyor musun?\n\n' + mxTarihGoster(k.tarih) + ' — ' + k.aciklama + '\n' + formatMasrafTutar(k.tutar) +
+    '\n\nTutarı bakiyeye geri yansıtılır. ("Silinenleri göster" ile geri alabilirsin.)')) return;
+  const onceki = (k.onceki || []).slice(-9);
+  onceki.push({ silindi: k.silindi, guncelleme: k.guncelleme });
+  Object.assign(k, { silindi: !k.silindi, onceki, guncelleme: Date.now(), _bekliyor: true });
+  delete k._hata;
+  mxDepoYaz();
   renderMasrafListesi();
+  mxGonder();
 }
 
-function masrafYenidenHesapla() {
-  let bakiye = 0;
-  masrafKayitlari.forEach(k => {
-    bakiye = Math.round((bakiye + (k.borc || 0) - (k.alacak || 0)) * 100) / 100;
-    k.bakiye = bakiye;
-  });
-}
-
-let _masrafDuzenlenenNo = null;
-
-function masrafDuzenle(no) {
-  const k = masrafKayitlari.find(x => x.no === no);
-  if (!k) return;
-  _masrafDuzenlenenNo = no;
-  document.getElementById('masrafFormAvans').style.display = 'none';
-  document.getElementById('masrafFormFis').style.display = 'none';
-  document.getElementById('masrafDuzenleTipSecim').value = k.borc > 0 ? 'borc' : 'alacak';
-  document.getElementById('masrafDuzenleTarih').value = k.tarih;
-  document.getElementById('masrafDuzenleAciklama').value = k.aciklama;
-  document.getElementById('masrafDuzenleTutar').value = k.borc > 0 ? k.borc : k.alacak;
-  document.getElementById('masrafDuzenleForm').style.display = 'flex';
-}
-
-function masrafDuzenleKaydet() {
-  const k = masrafKayitlari.find(x => x.no === _masrafDuzenlenenNo);
-  if (!k) return;
-  const tutar = parseFloat(document.getElementById('masrafDuzenleTutar').value);
-  if (!tutar || tutar <= 0) { alert('Lütfen geçerli bir tutar girin.'); return; }
-  const tip = document.getElementById('masrafDuzenleTipSecim').value;
-  const tarih = document.getElementById('masrafDuzenleTarih').value.trim();
-  const aciklama = document.getElementById('masrafDuzenleAciklama').value.trim();
-  if (tarih) k.tarih = tarih;
-  if (aciklama) k.aciklama = aciklama;
-  if (tip === 'borc') { k.borc = tutar; k.alacak = 0; }
-  else { k.alacak = tutar; k.borc = 0; }
-
-  masrafYenidenHesapla();
-  masrafKaydet();
-  _masrafDuzenlenenNo = null;
-  document.getElementById('masrafDuzenleForm').style.display = 'none';
-  renderMasrafListesi();
-}
-
-function masrafDuzenleIptal() {
-  _masrafDuzenlenenNo = null;
-  document.getElementById('masrafDuzenleForm').style.display = 'none';
-}
-
-function masrafSil(no) {
-  const k = masrafKayitlari.find(x => x.no === no);
-  if (!k) return;
-  const onay = confirm('Bu kaydı silmek istediğinize emin misiniz?\n\n' + k.tarih + ' — ' + k.aciklama + '\n\nBu tarihten sonraki tüm bakiyeler yeniden hesaplanacak. Bu işlem geri alınamaz.');
-  if (!onay) return;
-  const idx = masrafKayitlari.findIndex(x => x.no === no);
-  masrafKayitlari.splice(idx, 1);
-  masrafYenidenHesapla();
-  masrafKaydet();
-  renderMasrafListesi();
+let _mxBildirimZaman = null;
+function mxBildir(metin) {
+  const el = document.getElementById('mxBildirim');
+  if (!el) return;
+  el.textContent = metin;
+  el.classList.add('show');
+  clearTimeout(_mxBildirimZaman);
+  _mxBildirimZaman = setTimeout(() => el.classList.remove('show'), 2500);
 }
 
 function renderMasrafListesi() {
-  const bakiye = masrafSonBakiye();
   const bakiyeEl = document.getElementById('masrafBakiyeDeger');
-  bakiyeEl.textContent = formatMasrafTutar(bakiye);
-  bakiyeEl.classList.toggle('negatif', bakiye < 0);
+  if (!bakiyeEl) return;
+  const e = mxEkstre();
+  bakiyeEl.textContent = formatMasrafTutar(e.bakiye);
+  bakiyeEl.classList.toggle('negatif', e.bakiye < 0);
+  document.getElementById('mxOzet').innerHTML =
+    `<span>Alınan avans: <b>${formatMasrafTutar(e.toplamAvans)}</b></span>` +
+    `<span>Harcanan (${e.fisSayisi} fiş): <b>${formatMasrafTutar(e.toplamFis)}</b></span>`;
 
-  document.getElementById('masrafToplamKayit').textContent = '(' + masrafKayitlari.length + ' kayıt)';
+  const silinenGoster = document.getElementById('mxSilinenleriGoster').checked;
+  const gorunen = e.satirlar.filter(s => silinenGoster || !s.k.silindi);
+  document.getElementById('masrafToplamKayit').textContent = '(' + e.satirlar.filter(s => !s.k.silindi).length + ' kayıt)';
 
-  const sonKayitlar = masrafKayitlari.slice(-20).reverse();
-  const liste = document.getElementById('masrafListe');
-  liste.innerHTML = sonKayitlar.map(k => {
-    const isBorc = k.borc > 0;
-    const tutar = isBorc ? k.borc : k.alacak;
-    const tutarSinif = isBorc ? 'borc' : 'alacak';
-    const isaret = isBorc ? '+' : '−';
+  const kalem = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  const cop = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>';
+  const geri = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg>';
+
+  document.getElementById('masrafListe').innerHTML = gorunen.slice().reverse().map(({ k, bakiye }) => {
+    const fis = k.tip === 'fis';
+    const durum = k._bekliyor ? `<span class="mx-durum ${k._hata ? 'hata' : ''}" title="${k._hata ? 'Buluta yazılamadı' : 'Buluta gönderilmeyi bekliyor'}">${k._hata ? '⚠' : '⏳'}</span>` : '';
     return `
-      <div class="masraf-satir">
+      <div class="masraf-satir ${k.silindi ? 'mx-silindi' : ''} ${k.tip === 'acilis' ? 'mx-acilis' : ''}">
         <div class="masraf-satir-sol">
-          <div class="masraf-satir-tarih">${k.tarih}</div>
-          <div class="masraf-satir-aciklama">${k.aciklama}</div>
+          <div class="masraf-satir-tarih">${mxTarihGoster(k.tarih)} ${durum}${k.silindi ? ' <b>SİLİNDİ</b>' : ''}</div>
+          <div class="masraf-satir-aciklama">${mxEsc(k.aciklama)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div style="text-align:right;">
-            <div class="masraf-satir-tutar ${tutarSinif}">${isaret}${formatMasrafTutar(tutar)}</div>
-            <div class="masraf-satir-bakiye">Bakiye: ${formatMasrafTutar(k.bakiye)}</div>
+            <div class="masraf-satir-tutar ${fis ? 'alacak' : 'borc'}">${fis ? '−' : '+'}${formatMasrafTutar(k.tutar)}</div>
+            <div class="masraf-satir-bakiye">${bakiye === null ? '&nbsp;' : 'Bakiye: ' + formatMasrafTutar(bakiye)}</div>
           </div>
-          <button class="masraf-satir-aksiyon" onclick="masrafDuzenle(${k.no})" title="Düzenle" aria-label="Düzenle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button>
-          <button class="masraf-satir-aksiyon" onclick="masrafSil(${k.no})" title="Sil" aria-label="Sil"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+          ${k.silindi ? '' : `<button class="masraf-satir-aksiyon" onclick="mxFormAc(null,'${k.id}')" title="Düzenle" aria-label="Düzenle">${kalem}</button>`}
+          ${k.tip === 'acilis' ? '<span style="width:36px;"></span>' : `<button class="masraf-satir-aksiyon" onclick="mxSilGeriAl('${k.id}')" title="${k.silindi ? 'Geri al' : 'Sil'}" aria-label="${k.silindi ? 'Geri al' : 'Sil'}">${k.silindi ? geri : cop}</button>`}
         </div>
-      </div>
-    `;
+      </div>`;
   }).join('');
+  mxDurumGoster();
 }
 
-function masrafGecmisiSifirla() {
-  const onay1 = confirm(
-    'Bu işlem, telefonundaki ve buluttaki TÜM masraf kayıtlarını silip, panelin içindeki doğrulanmış Excel geçmişiyle (450 kayıt, güncel bakiye ' +
-    formatMasrafTutar(MASRAF_GECMIS[MASRAF_GECMIS.length - 1].bakiye) +
-    ') değiştirecek.\n\nBu tarihten sonra kendi eklediğin avans/fişler ETKİLENMEZ, ama şu ana kadar eklediğin her şey kaybolur.\n\nDevam etmek istiyor musun?'
-  );
-  if (!onay1) return;
-  const onay2 = confirm('Emin misin? Bu işlem geri alınamaz.');
-  if (!onay2) return;
-
-  masrafKayitlari = MASRAF_GECMIS.slice();
-  masrafKaydet();
-  renderMasrafListesi();
-  alert('Geçmiş, doğrulanmış Excel verisiyle eşitlendi. Güncel bakiye: ' + formatMasrafTutar(masrafSonBakiye()));
+// ── Dışa aktarma ──
+function mxDosyaPaylas(blob, ad, tur) {
+  const dosya = new File([blob], ad, { type: tur });
+  const indir = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = ad;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  };
+  if (navigator.canShare && navigator.canShare({ files: [dosya] })) {
+    navigator.share({ files: [dosya], title: ad }).catch(err => { if (err.name !== 'AbortError') indir(); });
+  } else indir();
 }
 
-function masrafExcelAktar() {
-  if (!window.XLSX) {
-    alert('Excel kütüphanesi yükleniyor, lütfen bir saniye sonra tekrar deneyin.');
-    return;
-  }
-  const header = ['No', 'Tarih', 'Açıklama', 'Borç (TL)', 'Alacak (TL)', 'Bakiye (TL)', 'Notlar'];
-  const aoa = [header];
-  masrafKayitlari.forEach(k => {
-    aoa.push([k.no, k.tarih, k.aciklama, k.borc || 0, k.alacak || 0, k.bakiye, '']);
+function mxDosyaTarihi() {
+  return mxTarihGoster(mxBugunISO()).replace(/\./g, '-');
+}
+
+function mxCsvAktar() {
+  const e = mxEkstre();
+  const sayi = v => v ? v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }) : '';
+  const hucre = s => '"' + String(s).replace(/"/g, '""') + '"';
+  const satirlar = [['Tarih', 'Açıklama', 'Avans (+)', 'Fiş (−)', 'Bakiye'].map(hucre).join(';')];
+  e.satirlar.filter(s => !s.k.silindi).forEach(({ k, bakiye }) => {
+    satirlar.push([mxTarihGoster(k.tarih), k.aciklama, k.tip === 'fis' ? '' : sayi(k.tutar), k.tip === 'fis' ? sayi(k.tutar) : '', sayi(bakiye) || '0'].map(hucre).join(';'));
   });
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [
-    { wch: 6 }, { wch: 12 }, { wch: 45 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }
-  ];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Hesap Ekstresi');
-  const tarih = new Date().toLocaleDateString('tr-TR').replace(/\./g, '-');
-  XLSX.writeFile(wb, `Ugur_Kazar_Is_Avansi_${tarih}.xlsx`);
+  satirlar.push(['', 'TOPLAM', sayi(e.toplamAvans), sayi(e.toplamFis), sayi(e.bakiye) || '0'].map(hucre).join(';'));
+  const blob = new Blob(['﻿' + satirlar.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  mxDosyaPaylas(blob, `Avans_Ekstresi_${mxDosyaTarihi()}.csv`, 'text/csv');
+}
+
+function mxPdfAktar() {
+  if (!window.jspdf) { alert('PDF kütüphanesi yüklenemedi (internet gerekebilir). CSV olarak aktarabilirsin.'); return; }
+  const olustur = () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+    const fonts = (typeof _pdfVarlik !== 'undefined' && _pdfVarlik && _pdfVarlik.fonts) || null;
+    let ad = 'helvetica';
+    if (fonts) {
+      doc.addFileToVFS('ArimoR.ttf', fonts.ArimoR); doc.addFont('ArimoR.ttf', 'Arimo', 'normal');
+      doc.addFileToVFS('ArimoB.ttf', fonts.ArimoB); doc.addFont('ArimoB.ttf', 'Arimo', 'bold');
+      ad = 'Arimo';
+    }
+    const T = s => fonts ? String(s) : String(s)
+      .replace(/ğ/g, 'g').replace(/Ğ/g, 'G').replace(/ü/g, 'u').replace(/Ü/g, 'U').replace(/ş/g, 's').replace(/Ş/g, 'S')
+      .replace(/ı/g, 'i').replace(/İ/g, 'I').replace(/ö/g, 'o').replace(/Ö/g, 'O').replace(/ç/g, 'c').replace(/Ç/g, 'C').replace(/−/g, '-');
+    const tl = v => (v || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TL';
+    const e = mxEkstre();
+    const gecerli = e.satirlar.filter(s => !s.k.silindi);
+
+    doc.setFont(ad, 'bold'); doc.setFontSize(14); doc.setTextColor(0, 47, 135);
+    doc.text(T('UĞUR KAZAR — İŞ AVANSI HESAP EKSTRESİ'), 14, 18);
+    doc.setFont(ad, 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+    const son = gecerli.length ? gecerli[gecerli.length - 1].k.tarih : MX_BASLANGIC_TARIHI;
+    doc.text(T(`Dönem: ${mxTarihGoster(MX_BASLANGIC_TARIHI)} – ${mxTarihGoster(son)}   ·   Rapor tarihi: ${mxTarihGoster(mxBugunISO())}`), 14, 24);
+
+    doc.autoTable({
+      startY: 29,
+      head: [[T('Tarih'), T('Açıklama'), T('Avans (+)'), T('Fiş (−)'), T('Bakiye')]],
+      body: gecerli.map(({ k, bakiye }) => [
+        mxTarihGoster(k.tarih), T(k.aciklama),
+        k.tip === 'fis' ? '' : tl(k.tutar), k.tip === 'fis' ? tl(k.tutar) : '', tl(bakiye)
+      ]),
+      foot: [['', T('TOPLAM'), tl(e.toplamAvans), tl(e.toplamFis), tl(e.bakiye)]],
+      styles: { font: ad, fontSize: 8.5, cellPadding: 1.8 },
+      headStyles: { fillColor: [0, 47, 135], fontStyle: 'bold' },
+      footStyles: { fillColor: [235, 238, 245], textColor: [20, 20, 20], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 22 }, 2: { halign: 'right', cellWidth: 27 }, 3: { halign: 'right', cellWidth: 27 }, 4: { halign: 'right', cellWidth: 29 } },
+      alternateRowStyles: { fillColor: [247, 247, 245] }
+    });
+    const y = doc.lastAutoTable.finalY + 8;
+    doc.setFont(ad, 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
+    doc.text(T('Kalan avans: ' + tl(e.bakiye)), 196, y, { align: 'right' });
+    mxDosyaPaylas(doc.output('blob'), `Avans_Ekstresi_${mxDosyaTarihi()}.pdf`, 'application/pdf');
+  };
+  if (typeof pdfVarliklariHazirla === 'function' && !(typeof _pdfVarlik !== 'undefined' && _pdfVarlik && _pdfVarlik.fonts))
+    pdfVarliklariHazirla().then(olustur, olustur);
+  else olustur();
+}
+
+// ── Başlat ──
+function mxBaslat() {
+  mxDepoOku();
+  mxDepoYaz();
+  mxFirebaseBaslat();
+  if (!mxSdkVar && navigator.onLine) mxSdkYukle();
+  window.addEventListener('online', () => { mxSdkYukle(); mxGonder(); mxDurumGoster(); });
+  window.addEventListener('offline', mxDurumGoster);
+  setInterval(() => { if (mxBekleyenSayisi()) mxGonder(); }, 20000);
+  renderMasrafListesi();
 }
 
 // Sayfa açılışında masraf verisini hazırla
-masrafYukle();
+mxBaslat();
 
 function openSiparisModal() {
   if (!aktiveFirma) {
