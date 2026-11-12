@@ -1227,7 +1227,6 @@
     transition: opacity 0.15s;
   }
   .teklif-action-btn:hover { opacity: 0.85; }
-  .teklif-copy-btn { background: var(--accent2); color: #fff; }
   .teklif-excel-btn { background: #1d6f42; color: #fff; }
   .teklif-pdf-btn { background: #c0392b; color: #fff; }
   .teklif-clear-btn { background: var(--surface2); border: 1px solid var(--border) !important; color: var(--text2); }
@@ -1669,7 +1668,7 @@
   .teklif-kdv-val { font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: -.01em; }
   .teklif-action-row {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     margin-top: 6px;
   }
@@ -1682,13 +1681,13 @@
     font-size: 15px; font-weight: 600;
   }
   .teklif-pdf-btn:hover { background: var(--accent2); }
-  .teklif-excel-btn, .teklif-copy-btn, .teklif-clear-btn {
+  .teklif-excel-btn, .teklif-clear-btn {
     min-height: 44px;
     background: var(--surface) !important;
     color: var(--text) !important;
     border: 1px solid var(--border-strong) !important;
   }
-  .teklif-excel-btn:hover, .teklif-copy-btn:hover { background: var(--surface2) !important; }
+  .teklif-excel-btn:hover { background: var(--surface2) !important; }
   .teklif-clear-btn { color: var(--text2) !important; }
   .teklif-wa-btn {
     grid-column: 1 / -1;
@@ -2078,7 +2077,12 @@
   .hesap-alt-baslik { font-size: 12px; font-weight: 700; color: var(--accent); }
   .hesap-not { font-size: 12px; line-height: 1.45; color: var(--text2); margin: 0; }
   .hesap-liste { display: flex; flex-direction: column; gap: 6px; }
-  .hesap-kisi { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 48px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); text-align: left; font: inherit; cursor: pointer; }
+  .hesap-kisi { display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; min-height: 56px; padding: 8px 8px 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  .hesap-kisi-bilgi { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .hesap-kisi-tuslar { display: flex; gap: 6px; flex-shrink: 0; }
+  .hesap-kisi-duzenle, .hesap-kisi-cikar { min-height: 40px; padding: 0 12px; border-radius: 8px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .hesap-kisi-duzenle { border: 1px solid var(--border-strong); background: var(--surface); color: var(--accent); }
+  .hesap-kisi-cikar { border: 1px solid #EBC5C5; background: #FDF1F1; color: var(--red); }
   .hesap-kisi.pasif { opacity: .6; }
   .hesap-kisi-ad { font-size: 14px; font-weight: 600; color: var(--text); }
   .hesap-kisi-alt { font-size: 12px; color: var(--text2); overflow-wrap: anywhere; }
@@ -2219,7 +2223,6 @@
       <div class="teklif-action-row">
         <button class="teklif-action-btn teklif-pdf-btn" onclick="exportToPDF()">PDF teklif oluştur</button>
         <button class="teklif-action-btn teklif-excel-btn" onclick="exportToExcel()">Excel</button>
-        <button class="teklif-action-btn teklif-copy-btn" onclick="copyTeklif()">Kopyala</button>
         <button class="teklif-action-btn teklif-clear-btn" onclick="clearTeklif()">Temizle</button>
         <button class="teklif-action-btn teklif-wa-btn" onclick="shareTeklifExcelToWhatsApp()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 13v6h14v-6"/></svg><span class="teklif-wa-text">Excel'i WhatsApp'ta gönder</span></button>
       </div>
@@ -5926,22 +5929,32 @@ function hesapCiz() {
 
   if (yoneticiMi()) {
     const liste = _hesapKullanicilar;
-    html += `<div class="hesap-baslik">Kullanıcılar</div>`;
+    html += `<div class="hesap-baslik">Temsilciler</div>
+      <button type="button" class="vg-birincil" onclick="kullaniciFormDoldur(null)">+ Temsilci ekle</button>`;
     if (!liste) html += `<div class="hesap-not">Yükleniyor…</div>`;
-    else html += `<div class="hesap-liste">${liste.map(k => `
-      <button type="button" class="hesap-kisi${k.aktif ? '' : ' pasif'}" data-eposta="${mxEsc(k.eposta)}" onclick="kullaniciFormDoldur(this.dataset.eposta)">
-        <span class="hesap-kisi-ad">${mxEsc(k.ad || k.eposta)}${k.rol === 'yonetici' ? ' · Yönetici' : ''}${k.aktif ? '' : ' · Pasif'}</span>
-        <span class="hesap-kisi-alt">${mxEsc(k.eposta)} · ${mxEsc(k.bolge || '—')}</span>
-      </button>`).join('') || '<div class="hesap-not">Henüz kullanıcı yok.</div>'}</div>`;
+    else html += `<div class="hesap-liste">${liste.map(k => {
+      const cikarilabilir = k.eposta !== MX_SAHIP_EMAIL && k.eposta !== kullaniciProfil.eposta;
+      return `
+      <div class="hesap-kisi${k.aktif ? '' : ' pasif'}">
+        <div class="hesap-kisi-bilgi">
+          <span class="hesap-kisi-ad">${mxEsc(k.ad || k.eposta)}${k.rol === 'yonetici' ? ' · Yönetici' : ''}${k.aktif ? '' : ' · Pasif'}</span>
+          <span class="hesap-kisi-alt">${mxEsc(k.eposta)} · ${mxEsc(k.bolge || '—')}</span>
+        </div>
+        <div class="hesap-kisi-tuslar">
+          <button type="button" class="hesap-kisi-duzenle" data-eposta="${mxEsc(k.eposta)}" onclick="kullaniciFormDoldur(this.dataset.eposta)">Düzenle</button>
+          ${cikarilabilir ? `<button type="button" class="hesap-kisi-cikar" data-eposta="${mxEsc(k.eposta)}" onclick="kullaniciCikar(this.dataset.eposta)">Çıkar</button>` : ''}
+        </div>
+      </div>`;
+    }).join('') || '<div class="hesap-not">Henüz temsilci yok.</div>'}</div>
+      <div class="vg-mesaj" id="kListeMesaj" role="status"></div>`;
     html += `
       <div class="hesap-form" id="kullaniciForm">
-        <div class="hesap-alt-baslik" id="kfBaslik">Yeni kullanıcı ekle</div>
+        <div class="hesap-alt-baslik" id="kfBaslik">Yeni temsilci ekle</div>
         <label class="vg-satir"><span>Şirket e-postası</span><input type="email" id="kfEposta" class="vg-girdi" autocomplete="off" placeholder="ad.soyad@mesan.com.tr"></label>
         <label class="vg-satir"><span>Ad Soyad</span><input type="text" id="kfAd" class="vg-girdi" maxlength="80" autocomplete="off"></label>
         <label class="vg-satir"><span>Telefon</span><input type="tel" id="kfTel" class="vg-girdi" maxlength="30" inputmode="tel" autocomplete="off"></label>
         <label class="vg-satir"><span>Bölge</span><select id="kfBolge">${bolgeSecenekleri('EGE', false)}</select></label>
         <label class="vg-satir"><span>Yetki</span><select id="kfRol"><option value="temsilci">Temsilci</option><option value="yonetici">Yönetici (fiyat listesi yayınlar, kullanıcı ekler)</option></select></label>
-        <label class="vg-onay"><input type="checkbox" id="kfAktif" checked> Aktif (asistanı kullanabilir)</label>
         <button type="button" class="vg-birincil" onclick="kullaniciKaydet()">Kullanıcıyı kaydet</button>
         <button type="button" class="vg-davet" id="kfDavet" style="display:none;" onclick="davetGonder()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 13v6h14v-6"/></svg>Davet gönder (WhatsApp)</button>
         <button type="button" class="vg-ikincil" onclick="kullaniciFormDoldur(null)">Formu temizle</button>
@@ -5994,20 +6007,18 @@ function hesapFormuOku() {
   const ids = ['hesapAd', 'hesapTel', 'kfEposta', 'kfAd', 'kfTel', 'kfBolge', 'kfRol'];
   const d = {};
   ids.forEach(id => { const el = document.getElementById(id); if (el) d[id] = el.value; });
-  const a = document.getElementById('kfAktif'); if (a) d.kfAktif = a.checked;
   return d;
 }
 function hesapFormuYaz(d) {
   Object.entries(d).forEach(([id, v]) => {
     const el = document.getElementById(id);
-    if (!el) return;
-    if (id === 'kfAktif') el.checked = v; else el.value = v;
+    if (el) el.value = v;
   });
 }
 
 function kullaniciFormDoldur(eposta) {
   const k = eposta && _hesapKullanicilar ? _hesapKullanicilar.find(x => x.eposta === eposta) : null;
-  document.getElementById('kfBaslik').textContent = k ? 'Kullanıcıyı düzenle' : 'Yeni kullanıcı ekle';
+  document.getElementById('kfBaslik').textContent = k ? 'Temsilciyi düzenle' : 'Yeni temsilci ekle';
   const em = document.getElementById('kfEposta');
   em.value = k ? k.eposta : '';
   em.readOnly = !!k;
@@ -6015,10 +6026,31 @@ function kullaniciFormDoldur(eposta) {
   document.getElementById('kfTel').value = k ? (k.telefon || '') : '';
   document.getElementById('kfBolge').value = k && k.bolge ? k.bolge : 'EGE';
   document.getElementById('kfRol').value = k && k.rol === 'yonetici' ? 'yonetici' : 'temsilci';
-  document.getElementById('kfAktif').checked = k ? k.aktif === true : true;
   document.getElementById('kfMesaj').textContent = '';
   davetDugmesiGuncelle();
   document.getElementById('kullaniciForm').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  if (!k) setTimeout(() => em.focus({ preventScroll: true }), 300);
+}
+
+// Temsilciyi çıkar: profil belgesi silinir, kişi artık giriş yapamaz. Masraf kayıtları silinmez.
+function kullaniciCikar(eposta) {
+  const k = (_hesapKullanicilar || []).find(x => x.eposta === eposta);
+  if (!k || eposta === MX_SAHIP_EMAIL || eposta === kullaniciProfil.eposta) return;
+  if (!confirm((k.ad || eposta) + ' asistandan çıkarılsın mı?\n\nArtık giriş yapamaz ve hiçbir veriyi göremez.\n' +
+    'Masraf kayıtları silinmez; aynı e-postayla tekrar eklerseniz kaldığı yerden devam eder.')) return;
+  const mesaj = document.getElementById('kListeMesaj');
+  if (mesaj) mesaj.textContent = 'Çıkarılıyor…';
+  mxDb.collection('kullanicilar').doc(eposta).delete()
+    .then(() => {
+      const form = document.getElementById('kfEposta');
+      if (form && form.value.trim().toLowerCase() === eposta) kullaniciFormDoldur(null);
+      return kullanicilariYukle();
+    })
+    .then(() => { const m = document.getElementById('kListeMesaj'); if (m) m.textContent = (k.ad || eposta) + ' çıkarıldı.'; })
+    .catch(e => {
+      const m = document.getElementById('kListeMesaj');
+      if (m) m.textContent = 'Çıkarılamadı: ' + (e.code === 'permission-denied' ? 'yetki yok (güvenlik kuralları yayınlandı mı?)' : (e.code || e.message));
+    });
 }
 
 function kullaniciKaydet() {
@@ -6028,10 +6060,10 @@ function kullaniciKaydet() {
   const telefon = document.getElementById('kfTel').value.trim().slice(0, 30);
   const bolge = document.getElementById('kfBolge').value;
   const rol = document.getElementById('kfRol').value;
-  const aktif = document.getElementById('kfAktif').checked;
+  const aktif = true; // V23.2: ekle/çıkar ile yönetilir; kayıtlı kişi her zaman aktif
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(eposta)) { mesaj.textContent = 'Geçerli bir e-posta yazın.'; return; }
   if (!ad) { mesaj.textContent = 'Ad Soyad yazın.'; return; }
-  if (eposta === MX_SAHIP_EMAIL && (!aktif || rol !== 'yonetici')) { mesaj.textContent = 'Sistem sahibi pasif yapılamaz ve yönetici kalır.'; return; }
+  if (eposta === MX_SAHIP_EMAIL && rol !== 'yonetici') { mesaj.textContent = 'Sistem sahibi yönetici kalır.'; return; }
   mesaj.textContent = 'Kaydediliyor…';
   mxDb.collection('kullanicilar').doc(eposta).set({ ad, telefon, bolge, rol, aktif, guncelleme: Date.now() })
     .then(() => {
@@ -6041,7 +6073,7 @@ function kullaniciKaydet() {
     })
     .then(() => {
       const m = document.getElementById('kfMesaj');
-      if (m) m.textContent = ad + ' kaydedildi.' + (aktif ? ' Şimdi "Davet gönder" ile bağlantıyı iletebilirsiniz.' : '');
+      if (m) m.textContent = ad + ' kaydedildi. Şimdi "Davet gönder" ile bağlantıyı iletebilirsiniz.';
       const em = document.getElementById('kfEposta');
       if (em) em.readOnly = true;
       davetDugmesiGuncelle();
@@ -6944,50 +6976,6 @@ function clearTeklif() {
   // Butonu geçici olarak "Temizlendi" yap
   const btn = document.querySelector('.teklif-clear-btn');
   if (btn) { btn.textContent = '✓ Temizlendi'; setTimeout(() => { btn.textContent = 'Temizle'; }, 1500); }
-}
-
-function copyTeklif() {
-  const isk = activeIskonto;
-  const iskLabel = isk === 'liste' ? 'Liste' : isk === 'net' ? 'NET' : isk.replace('n','%') + 'N';
-  const lines = [];
-  lines.push('TEKLİF FORMU');
-  lines.push(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`);
-  if (aktiveFirma && FIRMA_LISTESI[aktiveFirma]) lines.push(`Firma: ${FIRMA_LISTESI[aktiveFirma].ad}`);
-  lines.push('─'.repeat(95));
-  lines.push('Kod               Ürün Adı                       Br   Adet  Liste Fiy.  İsk  Birim Fiy.    Toplam');
-  lines.push('─'.repeat(95));
-  let genel = 0;
-  teklifItems.forEach((item) => {
-    const { prod, qty } = item;
-    if (!prod || item.mod === 'bulunamadi') {
-      lines.push(`${(item._siparisKod || '?').padEnd(18)}${'Sistemde kayıtlı değil'.padEnd(31)}${'—'.padEnd(5)}${String(qty).padStart(6)}  ${'—'.padStart(10)}  ${'BULUNAMADI'}`);
-      return;
-    }
-    const fiyat = getItemFiyat(item);
-    const sat = fiyat * qty;
-    genel += sat;
-    const kod = prod.kod.padEnd(18);
-    const ad = prod.ad.substring(0, 30).padEnd(31);
-    const br = (prod.br || '').padEnd(5);
-    const qtyStr = String(qty).padStart(6);
-    const listeStr = (kalemListeVar(item) ? formatPrice(prod.liste) : '—').padStart(10);
-    const iskStr = kalemEtiketi(item).padStart(5);
-    const birStr = formatPrice(fiyat).padStart(10);
-    const totStr = formatPrice(sat).padStart(10);
-    lines.push(`${kod}${ad}${br}${qtyStr}  ${listeStr}  ${iskStr}  ${birStr}  ${totStr}`);
-  });
-  lines.push('─'.repeat(95));
-  lines.push(`${'GENEL TOPLAM (KDV HARİÇ)'.padEnd(84)}${formatPrice(genel).padStart(10)}`);
-  lines.push(`${'KDV\'Lİ GENEL TOPLAM (%20)'.padEnd(84)}${formatPrice(genel * 1.20).padStart(10)}`);
-
-  navigator.clipboard.writeText(lines.join('\n')).then(() => {
-    const btn = document.querySelector('.teklif-copy-btn');
-    const orig = btn.textContent;
-    btn.textContent = '✓ Kopyalandı!';
-    setTimeout(() => { btn.textContent = orig; }, 2000);
-  }).catch(() => {
-    alert(lines.join('\n'));
-  });
 }
 
 // ─── PDF TEKLİF FORMU (MESAN şirket formu) ──────────────────────────────────
