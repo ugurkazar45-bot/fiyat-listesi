@@ -2087,6 +2087,8 @@
   .hesap-firma { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text); }
   .hesap-firma span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .hesap-firma select { width: 46%; flex-shrink: 0; }
+  .vg-davet { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--accent); border-radius: 8px; background: var(--navy-tint); color: var(--accent); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .vg-bolge { padding: 8px 10px; border-radius: 8px; background: var(--navy-tint); color: var(--accent); font-size: 12px; font-weight: 600; line-height: 1.4; }
   .hesap-cikis { margin-top: 10px; color: var(--red) !important; border-color: #EBC5C5 !important; }
   .mx-acilis-istek { padding: 10px 12px; border: 1px solid var(--accent); border-radius: 10px; background: var(--navy-tint); font-size: 13px; line-height: 1.45; color: var(--text); }
   .mx-acilis-istek button { display: block; width: 100%; min-height: 44px; margin-top: 8px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
@@ -2281,6 +2283,7 @@
     </label>
 
     <div id="vgFirmaSatir" style="display:none;">
+      <div class="vg-bolge" id="vgBolgeBilgi"></div>
       <label class="vg-satir"><span>Firma</span>
         <select id="vgFirma" onchange="veriFirmaDegisti()"></select>
       </label>
@@ -2598,7 +2601,7 @@ function closeFirmaModal(e) {
 
 function renderFirmaList(aramaStr) {
   const listEl = document.getElementById('firmaListEl');
-  const firmalar = Object.entries(FIRMA_LISTESI).filter(([k]) => firmaGorunur(k));
+  const firmalar = Object.entries(FIRMA_LISTESI);
   const filtered = aramaStr
     ? firmalar.filter(([k, v]) => v.ad.toLowerCase().includes(aramaStr.toLowerCase()))
     : firmalar;
@@ -4309,7 +4312,7 @@ function sepetGeriYukle() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem(SEPET_DEPO_ANAHTAR) || 'null'); } catch (e) { /* bozuksa unutulur */ }
   if (!d || teklifItems.length) { sepetKaydet(); return; }
-  if (d.firma && FIRMA_LISTESI[d.firma] && firmaGorunur(d.firma)) selectFirma(d.firma);
+  if (d.firma && FIRMA_LISTESI[d.firma]) selectFirma(d.firma);
   (d.kalemler || []).forEach(k => {
     const { kod, ...param } = k;
     if (!kod) { teklifItems.push({ ...param, prod: null, mod: 'bulunamadi' }); return; }
@@ -4369,7 +4372,7 @@ const MX_BASLANGIC_TARIHI = '2026-09-16';
 const BOLGELER = ['EGE', 'MARMARA', 'İÇ ANADOLU', 'AKDENİZ', 'KARADENİZ', 'DOĞU ANADOLU', 'GÜNEYDOĞU ANADOLU'];
 const PROFIL_DEPO_ANAHTAR = 'profil_v23';
 const SON_EPOSTA_ANAHTAR = 'sonKullanici_v23';
-const FIRMA_BOLGE_DEPO_ANAHTAR = 'firmaBolge_v23';
+const ESKI_FIRMA_BOLGE_ANAHTAR = 'firmaBolge_v23'; // V23.1'de kaldırıldı; cihazda kaldıysa silinir
 
 function depoOkuJson(anahtar, bos) {
   try { const d = JSON.parse(localStorage.getItem(anahtar) || 'null'); return d == null ? bos : d; } catch (e) { return bos; }
@@ -4382,18 +4385,14 @@ function depoSil(anahtar) {
 }
 
 let kullaniciProfil = depoOkuJson(PROFIL_DEPO_ANAHTAR, null); // { eposta, ad, telefon, bolge, rol, aktif }
-let firmaBolge = depoOkuJson(FIRMA_BOLGE_DEPO_ANAHTAR, {});   // { FIRMA_ANAHTARI: 'EGE' | 'TÜMÜ' }
+depoSil(ESKI_FIRMA_BOLGE_ANAHTAR);
 
 function yoneticiMi() {
   return !!(kullaniciProfil && (kullaniciProfil.eposta === MX_SAHIP_EMAIL || kullaniciProfil.rol === 'yonetici'));
 }
 
-// Bölgesi atanmamış firma herkese görünür; yönetici hepsini görür
-function firmaGorunur(anahtar) {
-  if (yoneticiMi()) return true;
-  const b = firmaBolge[anahtar];
-  if (!b || b === 'TÜMÜ') return true;
-  return !!(kullaniciProfil && kullaniciProfil.bolge === b);
+function kullaniciBolgesi() {
+  return (kullaniciProfil && kullaniciProfil.bolge) || '';
 }
 const MX_ACILIS = {
   id: 'acilis-2026-09-16', tip: 'acilis', tarih: MX_BASLANGIC_TARIHI,
@@ -4655,7 +4654,8 @@ function maliyetOturumKapandi(oncedenGirisVardi) {
 // katalog/* belgelerinden gelir; cevrimdisi icin cihazda saklanir, cikista silinir.
 // katalog/surum degisince yalnizca degisen belge indirilir.
 const KATALOG_DEPO_ANAHTAR = 'katalogOnbellek_v22';
-const KATALOG_TURLER = ['urunler', 'ek', 'ozel', 'firma'];
+// V23.1: firma fiyatları katalogda değil, bölgeye özel bolgeFirma/{bolge} belgesinde (bolgeFirmaDinle)
+const KATALOG_TURLER = ['urunler', 'ek', 'ozel'];
 const KATALOG_AZAMI_BOYUT = 1000000; // Firestore belge siniri 1 MiB
 let katalogBelgeler = {};
 let katalogSurum = {};
@@ -5025,12 +5025,13 @@ function aktifListeGoster() {
     ekle('Aktif liste:', genel);
   }
   btn.textContent = 'Güncelle';
-  btn.style.display = mxKullanici && yoneticiMi() ? '' : 'none';
+  // Yönetici tüm listeleri, temsilci kendi bölgesinin firma listelerini günceller
+  btn.style.display = mxKullanici ? '' : 'none';
 }
 
 function aktifListeTusu() {
   if (!mxKullanici) katalogGirisIste();
-  else if (yoneticiMi()) veriModalAc();
+  else veriModalAc();
 }
 
 function katalogGirisIste() {
@@ -5049,6 +5050,8 @@ function katalogOnbellekOku() {
   try {
     const d = JSON.parse(localStorage.getItem(KATALOG_DEPO_ANAHTAR) || 'null');
     if (d && d.belgeler && d.surum) {
+      // V23.1: cihazda kalan firma verisi bu kişinin bölgesine ait değilse kullanılmaz
+      if (d.belgeler.firma && (!d.belgeler.firma._bolge || d.belgeler.firma._bolge !== kullaniciBolgesi())) delete d.belgeler.firma;
       katalogBelgeler = d.belgeler;
       katalogSurum = d.surum;
       katalogUygula();
@@ -5117,11 +5120,64 @@ function katalogDinle() {
   });
 }
 
+// ─── BÖLGE FİRMA FİYATLARI (V23.1) ──────────────────────────────────────────
+// Her bölgenin firma özel fiyatları bolgeFirma/{bolge} belgesindedir; kurallar gereği yalnızca
+// o bölgenin temsilcileri okuyabilir. Gelen belge katalogBelgeler.firma'ya konur (biçim aynı).
+let bolgeFirmaDinleyici = null;
+let _bolgeFirmaBolge = '';
+
+function bolgeFirmaUygula(veri) {
+  katalogBelgeler.firma = veri;
+  katalogUygula();
+  katalogDepoYaz();
+  if (document.getElementById('veriOverlay').classList.contains('show') && veriTur() === 'firma') veriTurDegisti();
+}
+
+function bolgeFirmaDinle() {
+  const bolge = kullaniciBolgesi();
+  if (!mxDb || !bolge) return;
+  if (bolgeFirmaDinleyici && _bolgeFirmaBolge === bolge) return;
+  bolgeFirmaDurdur();
+  _bolgeFirmaBolge = bolge;
+  bolgeFirmaDinleyici = mxDb.collection('bolgeFirma').doc(bolge).onSnapshot(async snap => {
+    if (snap.metadata.hasPendingWrites) return;
+    if (snap.exists) { bolgeFirmaUygula({ ...snap.data(), _bolge: bolge }); return; }
+    if (snap.metadata.fromCache) return;
+    if (await eskiFirmalariTasi(bolge)) return; // taşınınca dinleyici yeniden tetiklenir
+    bolgeFirmaUygula({ veri: '{}', adet: 0, surum: 0, _bolge: bolge });
+  }, err => console.warn('[Firma] Bölge firma listesi okunamadı, cihazdaki son veri kullanılıyor:', err));
+}
+
+function bolgeFirmaDurdur() {
+  if (bolgeFirmaDinleyici) { bolgeFirmaDinleyici(); bolgeFirmaDinleyici = null; }
+  _bolgeFirmaBolge = '';
+}
+
+// Tek seferlik: V23'e kadar tüm firmalar katalog/firma'daydı (hepsi EGE). Sahip ilk girişte
+// EGE belgesine kopyalar; eski belge silinmez, yalnızca sahip okuyabilir.
+async function eskiFirmalariTasi(bolge) {
+  if (!kullaniciProfil || kullaniciProfil.eposta !== MX_SAHIP_EMAIL || bolge !== 'EGE') return false;
+  try {
+    const eski = await mxDb.collection('katalog').doc('firma').get();
+    if (!eski.exists) return false;
+    const d = eski.data();
+    await mxDb.collection('bolgeFirma').doc('EGE').set({
+      veri: d.veri, adet: d.adet || 0, guncelleme: d.guncelleme || new Date().toISOString(), surum: 1
+    });
+    console.info('[Firma] Eski firma listesi EGE bölgesine taşındı.');
+    return true;
+  } catch (e) {
+    console.warn('[Firma] Eski firma listesi taşınamadı:', e);
+    return false;
+  }
+}
+
 function katalogOturumKapandi() {
   if (katalogDinleyici) { katalogDinleyici(); katalogDinleyici = null; }
+  bolgeFirmaDurdur();
   try { localStorage.removeItem(KATALOG_DEPO_ANAHTAR); } catch (e) { /* onbellek zorunlu degil */ }
   sepetDepoSil();
-  depoSil(FIRMA_BOLGE_DEPO_ANAHTAR);
+  depoSil('pdfMusteri');
   katalogDurum = 'giris';
   // Ekranda ve teklifte urun verisi kalmasin
   if (katalogHazir) { location.reload(); return; }
@@ -5141,7 +5197,13 @@ function bugunMetni() {
 
 function veriModalAc() {
   if (!mxKullanici) { katalogGirisIste(); return; }
-  if (!yoneticiMi()) { alert('Fiyat listesini yalnızca yönetici güncelleyebilir.'); return; }
+  if (!kullaniciBolgesi() && !yoneticiMi()) { alert('Hesabınıza bölge atanmamış. Yöneticinize başvurun.'); return; }
+  // V23.1: temsilci yalnızca kendi bölgesinin firma özel fiyatlarını yükler
+  const yonetici = yoneticiMi();
+  [...vgEl('vgTur').options].forEach(o => { o.disabled = !yonetici && o.value !== 'firma'; o.hidden = o.disabled; });
+  if (!yonetici) vgEl('vgTur').value = 'firma';
+  vgEl('vgBolgeBilgi').textContent = 'Firma özel fiyatları ' + (kullaniciBolgesi() || '—') +
+    ' bölgesine kaydedilir; yalnızca bu bölgenin temsilcileri görür.';
   vgEl('vgListeAd').value = '';
   vgEl('vgTarih').value = bugunMetni();
   vgEl('veriOverlay').classList.add('show');
@@ -5427,6 +5489,7 @@ async function veriYayinla() {
   const mesaj = vgEl('vgMesaj');
   btn.disabled = true;
   mesaj.textContent = 'Yayınlanıyor…';
+  if (tur === 'firma') return bolgeFirmaYayinla(btn, mesaj);
   try {
     const kat = mxDb.collection('katalog');
     const [mevcut, surumBelge] = await Promise.all([kat.doc(tur).get(), kat.doc('surum').get()]);
@@ -5451,13 +5514,62 @@ async function veriYayinla() {
   }
 }
 
+// ── Firma özel fiyatları: kendi bölgesinin belgesine (V23.1) ──
+function bolgeFirmaYollari() {
+  const bolge = kullaniciBolgesi();
+  if (!bolge) throw new Error('Hesabınıza bölge atanmamış. Yöneticinize başvurun.');
+  return { belge: mxDb.collection('bolgeFirma').doc(bolge), onceki: mxDb.collection('bolgeFirma_onceki').doc(bolge) };
+}
+
+async function bolgeFirmaYayinla(btn, mesaj) {
+  try {
+    const y = bolgeFirmaYollari();
+    const mevcut = await y.belge.get();
+    const sunucuSurum = mevcut.exists ? (mevcut.data().surum || 0) : 0;
+    const yerelSurum = (katalogBelgeler.firma && katalogBelgeler.firma.surum) || 0;
+    if (sunucuSurum !== yerelSurum) throw new Error('Firma listesi başka cihazda değişti. Sayfa güncellensin, dosyayı yeniden seçin.');
+    const simdi = new Date().toISOString();
+    const belge = { ...veriBelgeOlustur('firma', simdi), surum: sunucuSurum + 1 };
+    if (new Blob([JSON.stringify(belge)]).size >= KATALOG_AZAMI_BOYUT) throw new Error('Veri 1 MB sınırına ulaştı, yayınlanmadı.');
+    const toplu = mxDb.batch();
+    if (mevcut.exists) toplu.set(y.onceki, mevcut.data());
+    toplu.set(y.belge, belge);
+    await toplu.commit();
+    veriSifirla();
+    mesaj.textContent = '✓ Firma özel fiyatları ' + kullaniciBolgesi() + ' bölgesine yayınlandı.';
+    veriOncekiGoster();
+  } catch (e) {
+    mesaj.textContent = 'Yayınlanamadı: ' + (e.code === 'permission-denied' ? 'yetki yok' : e.message);
+    veriYayinDurumu();
+  }
+}
+
+async function bolgeFirmaGeriAl(btn, mesaj) {
+  try {
+    const y = bolgeFirmaYollari();
+    const [mevcut, onceki] = await Promise.all([y.belge.get(), y.onceki.get()]);
+    if (!onceki.exists || !mevcut.exists) throw new Error('Önceki sürüm bulunamadı.');
+    const toplu = mxDb.batch();
+    toplu.set(y.onceki, mevcut.data());
+    toplu.set(y.belge, { ...onceki.data(), surum: (mevcut.data().surum || 0) + 1, guncelleme: new Date().toISOString() });
+    await toplu.commit();
+    veriSifirla();
+    mesaj.textContent = '✓ Önceki sürüme dönüldü.';
+    veriOncekiGoster();
+  } catch (e) {
+    mesaj.textContent = 'Geri alınamadı: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function veriOncekiGoster() {
   const btn = vgEl('vgGeriAl');
   const tur = veriTur();
   btn.style.display = 'none';
   if (!mxDb || !mxKullanici) return;
   try {
-    const d = await mxDb.collection('katalog_onceki').doc(tur).get();
+    const d = await (tur === 'firma' ? bolgeFirmaYollari().onceki : mxDb.collection('katalog_onceki').doc(tur)).get();
     if (!d.exists || tur !== veriTur()) return;
     const v = d.data();
     let etiket = tarihGoster(v.guncelleme);
@@ -5474,6 +5586,7 @@ async function veriGeriAl() {
   if (!confirm(VERI_TUR_ADLARI[tur] + ' önceki sürüme dönecek. Emin misiniz?')) return;
   btn.disabled = true;
   mesaj.textContent = 'Geri alınıyor…';
+  if (tur === 'firma') return bolgeFirmaGeriAl(btn, mesaj);
   try {
     const kat = mxDb.collection('katalog');
     const once = mxDb.collection('katalog_onceki');
@@ -5514,8 +5627,7 @@ function mxFirebaseBaslat() {
       mxKullanici = u;
       if (u) {
         mxKullaniciDegisti((u.email || '').toLowerCase());
-        maliyetYukle(); katalogDinle(); firmaBolgeYukle();
-        if (aktiveFirma && !firmaGorunur(aktiveFirma)) clearFirma();
+        maliyetYukle(); katalogDinle(); bolgeFirmaDinle();
       } else {
         katalogOturumKapandi(); maliyetOturumKapandi(oncedenGirisVardi);
         kullaniciProfil = null; depoSil(PROFIL_DEPO_ANAHTAR);
@@ -5831,19 +5943,11 @@ function hesapCiz() {
         <label class="vg-satir"><span>Yetki</span><select id="kfRol"><option value="temsilci">Temsilci</option><option value="yonetici">Yönetici (fiyat listesi yayınlar, kullanıcı ekler)</option></select></label>
         <label class="vg-onay"><input type="checkbox" id="kfAktif" checked> Aktif (asistanı kullanabilir)</label>
         <button type="button" class="vg-birincil" onclick="kullaniciKaydet()">Kullanıcıyı kaydet</button>
+        <button type="button" class="vg-davet" id="kfDavet" style="display:none;" onclick="davetGonder()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 13v6h14v-6"/></svg>Davet gönder (WhatsApp)</button>
         <button type="button" class="vg-ikincil" onclick="kullaniciFormDoldur(null)">Formu temizle</button>
         <div class="vg-mesaj" id="kfMesaj" role="status"></div>
-        <div class="hesap-not">Eklenen kişi giriş ekranında e-postasını yazıp "İlk kez: şifre oluştur"a basar, gelen doğrulama e-postasını onaylar ve giriş yapar.</div>
+        <div class="hesap-not">Kaydettikten sonra <b>Davet gönder</b> ile bağlantıyı ve kurulum adımlarını kişiye gönderin. Herkes yalnızca kendi masrafını ve kendi bölgesinin firma fiyatlarını görür; siz de başkalarınınkini göremezsiniz.</div>
       </div>`;
-
-    const firmalar = Object.entries(FIRMA_LISTESI);
-    html += `<div class="hesap-baslik">Firmaların bölgesi</div>
-      <div class="hesap-not">"TÜMÜ" seçili firmayı herkes görür. Bölge seçilirse yalnızca o bölgenin temsilcileri ve yöneticiler görür.</div>`;
-    html += firmalar.length ? `<div class="hesap-liste">${firmalar.map(([key, f]) => `
-      <label class="hesap-firma"><span>${mxEsc(f.ad)}</span><select data-firma="${mxEsc(key)}" class="firma-bolge-sec">${bolgeSecenekleri(firmaBolge[key] || 'TÜMÜ', true)}</select></label>`).join('')}</div>
-      <button type="button" class="vg-birincil" onclick="firmaBolgeKaydet()">Firma bölgelerini kaydet</button>
-      <div class="vg-mesaj" id="fbMesaj" role="status"></div>`
-      : '<div class="hesap-not">Firma listesi henüz yüklenmedi.</div>';
   }
 
   html += `
@@ -5881,6 +5985,7 @@ async function kullanicilariYukle() {
     const kayit = hesapFormuOku();
     hesapCiz();
     hesapFormuYaz(kayit);
+    davetDugmesiGuncelle();
   }
 }
 
@@ -5912,6 +6017,7 @@ function kullaniciFormDoldur(eposta) {
   document.getElementById('kfRol').value = k && k.rol === 'yonetici' ? 'yonetici' : 'temsilci';
   document.getElementById('kfAktif').checked = k ? k.aktif === true : true;
   document.getElementById('kfMesaj').textContent = '';
+  davetDugmesiGuncelle();
   document.getElementById('kullaniciForm').scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 
@@ -5933,30 +6039,42 @@ function kullaniciKaydet() {
       if (eposta === kullaniciProfil.eposta) profilKaydet({ ...kullaniciProfil, ad, telefon, bolge, rol, aktif });
       return kullanicilariYukle();
     })
-    .then(() => { const m = document.getElementById('kfMesaj'); if (m) m.textContent = ad + ' kaydedildi.'; })
+    .then(() => {
+      const m = document.getElementById('kfMesaj');
+      if (m) m.textContent = ad + ' kaydedildi.' + (aktif ? ' Şimdi "Davet gönder" ile bağlantıyı iletebilirsiniz.' : '');
+      const em = document.getElementById('kfEposta');
+      if (em) em.readOnly = true;
+      davetDugmesiGuncelle();
+    })
     .catch(e => { mesaj.textContent = 'Kaydedilemedi: ' + (e.code === 'permission-denied' ? 'yetki yok (güvenlik kuralları yayınlandı mı?)' : (e.code || e.message)); });
 }
 
-async function firmaBolgeYukle() {
-  if (!mxDb) return;
-  try {
-    const belge = await mxDb.collection('ayarlar').doc('firmaBolge').get();
-    firmaBolge = (belge.exists && belge.data().atamalar) || {};
-    depoYazJson(FIRMA_BOLGE_DEPO_ANAHTAR, firmaBolge);
-    if (aktiveFirma && !firmaGorunur(aktiveFirma)) clearFirma();
-  } catch (e) {
-    console.warn('[Firma bölgeleri] okunamadı, cihazdaki son veri kullanılıyor:', e);
-  }
+// ── Davet (V23.1): kayıtlı kullanıcıya bağlantı ve kurulum adımlarını gönder ──
+function davetDugmesiGuncelle() {
+  const btn = document.getElementById('kfDavet');
+  const em = document.getElementById('kfEposta');
+  if (!btn || !em) return;
+  const eposta = em.value.trim().toLowerCase();
+  btn.style.display = (_hesapKullanicilar || []).some(k => k.eposta === eposta && k.aktif) ? '' : 'none';
 }
 
-function firmaBolgeKaydet() {
-  const mesaj = document.getElementById('fbMesaj');
-  const atamalar = {};
-  document.querySelectorAll('.firma-bolge-sec').forEach(s => { if (s.value !== 'TÜMÜ') atamalar[s.dataset.firma] = s.value; });
-  mesaj.textContent = 'Kaydediliyor…';
-  mxDb.collection('ayarlar').doc('firmaBolge').set({ atamalar, guncelleme: Date.now() })
-    .then(() => { firmaBolge = atamalar; depoYazJson(FIRMA_BOLGE_DEPO_ANAHTAR, atamalar); mesaj.textContent = 'Firma bölgeleri kaydedildi.'; })
-    .catch(e => { mesaj.textContent = 'Kaydedilemedi: ' + (e.code === 'permission-denied' ? 'yetki yok (güvenlik kuralları yayınlandı mı?)' : (e.code || e.message)); });
+function davetMetni() {
+  const link = location.origin + location.pathname;
+  return 'Merhaba,\n\nMESAN Fiyat Asistanı için hesabınız açıldı.\n\n' +
+    '1) Bu bağlantıyı Chrome\'da (iPhone\'da Safari) açın:\n' + link + '\n' +
+    '2) Sağ üstteki kişi simgesine dokunun, "Giriş yap"a basın.\n' +
+    '3) Şirket e-postanızı ve kendinize bir şifre (en az 6 karakter) yazıp "İlk kez: şifre oluştur"a basın.\n' +
+    '4) E-postanıza gelen doğrulama bağlantısına tıklayın (gelmezse istenmeyen / spam klasörüne bakın).\n' +
+    '5) Uygulamaya dönüp aynı e-posta ve şifreyle "Giriş yap"a basın.\n' +
+    '6) Tarayıcı menüsünden "Ana ekrana ekle" deyin; MESAN simgesiyle uygulama gibi açılır.\n\n' +
+    'Masraflarınızı ve bölgenizin firma fiyatlarını yalnızca siz görürsünüz.';
+}
+
+function davetGonder() {
+  const metin = davetMetni();
+  const wa = () => window.open('https://wa.me/?text=' + encodeURIComponent(metin), '_blank');
+  if (navigator.share) navigator.share({ title: 'MESAN Fiyat Asistanı', text: metin }).catch(e => { if (e.name !== 'AbortError') wa(); });
+  else wa();
 }
 
 function cikisYap() {
