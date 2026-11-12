@@ -4189,12 +4189,8 @@ function kalemManuelIsk(item) {
 // Ekran, Excel, Kopyala ve PDF'teki "İskonto / fiyat tipi" etiketi (tek kaynak)
 function kalemEtiketi(item) {
   if (!item.prod || item.mod === 'bulunamadi') return 'BULUNAMADI';
-  if (item.manuel) {
-    const isk = kalemManuelIsk(item);
-    if (isk === null || isk < 0) return 'ÖZEL';
-    if (isk === 0) return 'Liste';
-    return '%' + trSayiYaz(isk, 1);
-  }
+  // Kural: sepette elle değiştirilen fiyat her çıktıda "NET" yazar; iskonto oranı yazılmaz
+  if (item.manuel) return 'NET';
   const mod = item.mod || 'iskonto';
   if (mod === 'ozel-net') return 'ÖZEL ÜRETİM';
   if (mod === 'firma') return 'ÖZEL';
