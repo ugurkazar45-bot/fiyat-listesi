@@ -2863,7 +2863,7 @@ function buildResultCard(prod, showAll = false) {
   const isFirmaFiyat = firmaF !== null;
   // Liste fiyatı hiç olmayan (sadece Excel maliyetinden gelen EK_URUNLER) ürünlerde,
   // firmaya özel tanımlı fiyat yoksa hiçbir şekilde maliyet bazlı otomatik fiyat gösterilmez.
-  const fiyatYok = prod._ekUrun && !isFirmaFiyat;
+  const fiyatYok = prod._ekUrun && !isFirmaFiyat && !ekUrunMaliyetli(prod.kod);
   const finalPrice = isFirmaFiyat ? firmaF : (fiyatYok ? null : getAktifFiyat(prod, isk));
   const isDiscount = isk !== 'liste';
   const pct = getIskontoPercent(isk);
@@ -2908,6 +2908,16 @@ function buildResultCard(prod, showAll = false) {
         <span class="price-val" style="color:var(--gold);font-weight:700;">${formatPrice(finalPrice)}</span>
       </div>
       <div style="font-size:10px;color:var(--text2);margin-top:4px;">Bu ürün için ${FIRMA_LISTESI[aktiveFirma]?.ad || 'seçili firma'} listesinde tanımlı özel fiyat var — liste/iskonto/net fiyat bu üründe kullanılmaz.</div>
+    `;
+  } else if (prod._ekUrun) {
+    // V24: liste fiyatı olmayan, maliyeti yüklü ürün — iskonto seçili olsa da yalnızca NET gösterilir
+    const vadeStr = activeVade === 0 ? 'Peşin' : activeVade + ' gün vadeli';
+    priceRows = `
+      <div class="price-row" style="background:rgba(154,103,0,0.08);border-radius:6px;padding:8px 4px;margin:2px 0;border:1px solid rgba(154,103,0,0.3);">
+        <span class="price-label"><b>Net Fiyat</b><span style="font-size:10px;color:var(--text2);margin-left:6px;">(${vadeStr} · %${activeKar} kar)</span></span>
+        <span class="price-val" style="color:var(--gold);font-weight:700;">${formatPrice(finalPrice)}</span>
+      </div>
+      <div style="font-size:10px;color:var(--text2);margin-top:4px;">Liste dışı ürün — liste/iskonto fiyatı yok, yalnızca Net Fiyat verilir.</div>
     `;
   } else if (showAll) {
     priceRows = `
@@ -3126,12 +3136,16 @@ const _ekUrunMap = {};
 EK_URUNLER.forEach(o => { _ekUrunMap[o.kod] = o; });
 
 // V21: fiyati olmayan ek urunler gosterilmez; yalnizca secili firmanin ozel fiyati varsa gorunur.
+// V24: maliyeti yuklu (yalnizca maliyeti okuyabilen hesapta) ek urunler NET fiyatla da gorunur.
+function ekUrunMaliyetli(kod) {
+  return maliyetHazir && MALIYET[kod] !== undefined;
+}
 function ekUrunGorunur(kod) {
-  return getFirmaFiyat(kod) !== null;
+  return getFirmaFiyat(kod) !== null || ekUrunMaliyetli(kod);
 }
 
 function gorunurEkUrunler() {
-  return aktiveFirma ? _ekUrunlerAsProd.filter(p => ekUrunGorunur(p.kod)) : [];
+  return _ekUrunlerAsProd.filter(p => ekUrunGorunur(p.kod));
 }
 
 function isEkUrun(kod) {
@@ -3291,7 +3305,7 @@ function buildMultiDetailCards(prods, showAll) {
     const isFirmaFiyat = firmaF !== null;
     // Liste fiyatı hiç olmayan (EK_URUNLER) ve firmaya özel fiyatı da olmayan ürünlerde
     // maliyet bazlı otomatik fiyat hiç gösterilmez.
-    const fiyatYok = p._ekUrun && !isFirmaFiyat;
+    const fiyatYok = p._ekUrun && !isFirmaFiyat && !ekUrunMaliyetli(p.kod);
     const finalPrice = isFirmaFiyat ? firmaF : (fiyatYok ? null : getAktifFiyat(p, isk));
     const border = i < prods.length - 1 ? 'border-bottom:1px solid var(--border);' : '';
     const safeKod = p.kod.replace(/'/g, "\\'");
@@ -3317,6 +3331,27 @@ function buildMultiDetailCards(prods, showAll) {
             <div style="font-size:10px;color:var(--text2);font-family:var(--mono);">${p.kod}<span class="br-badge" style="margin-left:4px;">${p.br}</span></div>
             <div style="font-size:14px;font-weight:500;color:var(--text);line-height:1.35;margin:2px 0;">${p.ad}</div>
             <div style="font-size:10px;color:var(--gold);">Özel fiyat</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:auto;">
+            <div style="text-align:right;">
+              <div style="font-size:15px;font-weight:700;color:var(--gold);">${formatPrice(finalPrice)}</div>
+            </div>
+            <button class="teklif-whatsapp-btn" title="WhatsApp'ta Paylaş"
+              onclick="shareProductToWhatsApp('${safeKod}', '${p.ad.replace(/'/g, "\\'")}', ${finalPrice})" aria-label="WhatsApp'ta paylaş"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 13v6h14v-6"/></svg></button>
+            <button class="teklif-inline-btn" onclick="(function(btn){addToTeklifFromCard('${safeKod}',btn);btn.dataset.kod='${safeKod}';})(this)">+ Ekle</button>
+          </div>
+        </div>
+      `;
+    }
+
+    if (p._ekUrun) {
+      // V24: liste fiyatı olmayan, maliyeti yüklü ürün — yalnızca NET fiyat
+      return `
+        <div style="display:flex;flex-wrap:wrap;align-items:center;${border}padding:12px 0;gap:10px 12px;">
+          <div style="flex:1 1 220px;min-width:0;">
+            <div style="font-size:10px;color:var(--text2);font-family:var(--mono);">${p.kod}<span class="br-badge" style="margin-left:4px;">${p.br}</span></div>
+            <div style="font-size:14px;font-weight:500;color:var(--text);line-height:1.35;margin:2px 0;">${p.ad}</div>
+            <div style="font-size:10px;color:var(--gold);">Net Fiyat · liste dışı ürün</div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:auto;">
             <div style="text-align:right;">
@@ -6456,10 +6491,7 @@ function getFirmaKoduTersMap(firmaKey) {
 // Standart + Excel-kaynaklı (EK_URUNLER) tüm ürünleri isimle arama için tek listede topla
 let _tumUrunlerAdListesiCache = null;
 function getTumUrunlerAdListesi() {
-  if (!aktiveFirma) {
-    if (!_tumUrunlerAdListesiCache) _tumUrunlerAdListesiCache = [...URUNLER];
-    return _tumUrunlerAdListesiCache;
-  }
+  // V24: maliyet yuklenince/firma degisince degisebildigi icin onbellek kullanilmaz
   return [...URUNLER, ...gorunurEkUrunler()];
 }
 

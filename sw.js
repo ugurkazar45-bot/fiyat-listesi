@@ -1,10 +1,10 @@
-// MESAN Fiyat Asistanı — service worker (V23)
+// MESAN Fiyat Asistanı — service worker (V24)
 // Amaç: uygulama internetsiz de açılsın. Fiyat ve maliyet verisi burada saklanmaz;
 // onlar girişten sonra Firestore'dan gelir ve sayfanın kendi cihaz önbelleğinde durur.
 // • Sayfa (index.html): önce ağ, yoksa son kopya → yeni sürüm hemen gelir.
 // • CDN kütüphaneleri ve yazı tipleri: önce önbellek (sürüm numaralı adresler, değişmez).
 // • Firestore / giriş istekleri: hiç dokunulmaz.
-const SURUM = 'v23-1';
+const SURUM = 'v24-1';
 const SAYFA_ONBELLEK = 'sayfa-' + SURUM;
 const KUTUPHANE_ONBELLEK = 'kutuphane-v1';
 const KABUK = ['./', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
