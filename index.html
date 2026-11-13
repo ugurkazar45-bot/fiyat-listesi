@@ -2291,6 +2291,7 @@ if (/Android/i.test(navigator.userAgent)) {
         <option value="firma">Firma özel fiyatları</option>
         <option value="ozel">Özel ürünler (141-)</option>
         <option value="ek">Ek ürünler</option>
+        <option value="maliyet">NET maliyetleri (Excel – Calt01)</option>
       </select>
     </label>
 
@@ -3146,10 +3147,13 @@ EK_URUNLER.forEach(o => { _ekUrunMap[o.kod] = o; });
 
 // V21: fiyati olmayan ek urunler gosterilmez; yalnizca secili firmanin ozel fiyati varsa gorunur.
 // V24: maliyeti yuklu (yalnizca maliyeti okuyabilen hesapta) ek urunler NET fiyatla da gorunur.
-// Kural: kod 1 ile baslar, 15 ile baslamaz (2P0, 2Z0, 15x gibi kodlar gosterilmez)
-function ekUrunMaliyetli(kod) {
+// Kural: NET yalnızca kodu 1 ile başlayan, 15 ile başlamayan ürünlerde (2P0, 2Z0, 15x gösterilmez)
+function netKoduUygun(kod) {
   const k = String(kod);
-  if (k.charAt(0) !== '1' || k.indexOf('15') === 0) return false;
+  return k.charAt(0) === '1' && k.indexOf('15') !== 0;
+}
+function ekUrunMaliyetli(kod) {
+  if (!netKoduUygun(kod)) return false;
   return maliyetHazir && MALIYET[kod] !== undefined;
 }
 // V24.3: kod katalogda var ama maliyeti asistana gelmemişse "bulunamadı" yerine nedenini söyle
@@ -3159,7 +3163,7 @@ function maliyetBekleyenMesaji(sorgu) {
   const parca = m[1];
   const bekleyen = EK_URUNLER.filter(u => {
     const k = String(u.kod);
-    return k.toLowerCase().indexOf(parca) === 0 && k.charAt(0) === '1' && k.indexOf('15') !== 0
+    return k.toLowerCase().indexOf(parca) === 0 && netKoduUygun(k)
       && MALIYET[k] === undefined && getFirmaFiyat(k) === null;
   }).slice(0, 5);
   if (!bekleyen.length) return '';
@@ -5251,7 +5255,7 @@ function katalogOturumKapandi() {
 }
 
 // ─── VERİ GÜNCELLE EKRANI ────────────────────────────────────────────────────
-const VERI_TUR_ADLARI = { urunler: 'Liste fiyatları', firma: 'Firma özel fiyatları', ozel: 'Özel ürünler (141-)', ek: 'Ek ürünler' };
+const VERI_TUR_ADLARI = { urunler: 'Liste fiyatları', firma: 'Firma özel fiyatları', ozel: 'Özel ürünler (141-)', ek: 'Ek ürünler', maliyet: 'NET maliyetleri' };
 let _vg = null;
 
 function vgEl(id) { return document.getElementById(id); }
@@ -5352,6 +5356,7 @@ async function veriDosyaSecildi(input) {
   try {
     if (!window.XLSX) throw new Error('Excel kütüphanesi yüklenemedi. İnterneti kontrol edin.');
     const sayfalar = dosyaSayfalari(await dosya.arrayBuffer(), dosya.name);
+    if (veriTur() === 'maliyet') { await maliyetDosyaHazirla(sayfalar, dosya.name); return; }
     const adlar = Object.keys(sayfalar);
     const bilinen = veriBilinenKodlar();
     let enIyi = adlar[0], enIyiPuan = -1;
@@ -5545,7 +5550,132 @@ function veriBelgeOlustur(tur, simdi) {
   return b;
 }
 
+// ─── NET MALİYETLERİ EXCEL'DEN (V24.4) ──────────────────────────────────────
+// "Mesan Satış Fiyat Hesapla" Excel'indeki Calt01 sayfasından maliyet = SUMCOST / SKCALCLOT
+// (Excel'in "Ürt.Mlyt" sütunu ve MaliyetYayin makrosuyla aynı formül). Buluttaki listeyi günceller,
+// kurala uyan (netKoduUygun) yeni kodları ekler. Excel'deki "Yeniden Hesapla" düğmesi bundan sonra
+// bu kodların hepsini günceller. Yalnızca kod:maliyet gönderilir; diğer sayfalar okunmaz.
+const MALIYET_ASGARI_ESLESME = 0.9;
+
+function maliyetCalt01Oku(sayfalar) {
+  const ara = rows => {
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      const b = (rows[i] || []).map(v => String(v == null ? '' : v).trim().toUpperCase());
+      const kod = b.indexOf('MATERIAL'), lot = b.indexOf('SKCALCLOT'), tutar = b.indexOf('SUMCOST');
+      if (kod >= 0 && lot >= 0 && tutar >= 0) return { bas: i + 1, kod, lot, tutar };
+    }
+    return null;
+  };
+  const adlar = Object.keys(sayfalar);
+  const sirali = adlar.filter(a => a.toLowerCase() === 'calt01').concat(adlar.filter(a => a.toLowerCase() !== 'calt01'));
+  for (const ad of sirali) {
+    const rows = sayfalar[ad];
+    const k = ara(rows);
+    if (!k) continue;
+    const sonuc = {};
+    for (let i = k.bas; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const kod = String(r[k.kod] == null ? '' : r[k.kod]).trim();
+      const lot = Number(r[k.lot]), tutar = Number(r[k.tutar]);
+      if (kod && isFinite(lot) && isFinite(tutar) && lot > 0 && tutar > 0) sonuc[kod] = (tutar / lot).toFixed(6);
+    }
+    return { sayfa: ad, maliyetler: sonuc };
+  }
+  return null;
+}
+
+async function maliyetDosyaHazirla(sayfalar, dosyaAdi) {
+  const mesaj = vgEl('vgMesaj');
+  if (!yoneticiMi()) throw new Error('NET maliyetlerini yalnızca yönetici yükleyebilir.');
+  const okunan = maliyetCalt01Oku(sayfalar);
+  if (!okunan) throw new Error('Dosyada Calt01 (MATERIAL / SKCALCLOT / SUMCOST) sayfası bulunamadı.');
+  const excel = okunan.maliyetler;
+  mesaj.textContent = 'Buluttaki maliyetler okunuyor…';
+  const belge = await mxDb.collection('maliyet').doc('guncel').get();
+  const mevcutMetin = belge.exists ? String(belge.data().kalemler || '') : '';
+  const parcalar = mevcutMetin ? mevcutMetin.split('|') : [];
+  const mevcutKodlar = new Set();
+  let eslesen = 0, degisen = 0, eksik = 0;
+  const yeniParcalar = parcalar.map(p => {
+    const i = p.lastIndexOf(':');
+    if (i < 1) throw new Error('Buluttaki maliyet listesi okunamadı.');
+    const kod = p.slice(0, i), eski = p.slice(i + 1);
+    mevcutKodlar.add(kod);
+    if (excel[kod] === undefined) { eksik++; return p; }
+    eslesen++;
+    if (excel[kod] !== eski) { degisen++; return kod + ':' + excel[kod]; }
+    return p;
+  });
+  const eklenecek = Object.keys(excel).filter(k => !mevcutKodlar.has(k) && netKoduUygun(k));
+  eklenecek.forEach(k => yeniParcalar.push(k + ':' + excel[k]));
+  const toplam = yeniParcalar.length;
+  let engel = '';
+  if (parcalar.length && eslesen / parcalar.length < MALIYET_ASGARI_ESLESME)
+    engel = 'Excel\'deki maliyetler eksik görünüyor (' + eslesen + ' / ' + parcalar.length + ' eşleşti). Yanlış dosya olabilir; yayınlanmaz.';
+  if (toplam < 1500) engel = engel || 'Toplam maliyet sayısı çok az (' + toplam + '); yayınlanmaz.';
+  if (!degisen && !eklenecek.length) engel = engel || 'Buluttaki maliyetler zaten bu Excel ile aynı; yayınlanacak değişiklik yok.';
+  _vg = { maliyet: { kalemler: yeniParcalar.join('|'), adet: toplam, engel } };
+
+  vgEl('vgEslesme').style.display = 'none';
+  vgEl('vgKaldirSatir').style.display = 'none';
+  vgEl('vgRiskSatir').style.display = 'none';
+  const kutu = vgEl('vgOzet');
+  kutu.textContent = '';
+  kutu.style.display = '';
+  const satir = (etiket, deger, sinif) => {
+    const d = document.createElement('div');
+    d.className = 'vg-ozet-satir' + (sinif ? ' ' + sinif : '');
+    const a = document.createElement('span'); a.textContent = etiket;
+    const b = document.createElement('b'); b.textContent = deger;
+    d.appendChild(a); d.appendChild(b); kutu.appendChild(d);
+  };
+  satir('Dosya / sayfa', dosyaAdi + ' · ' + okunan.sayfa);
+  satir('Excel\'de maliyetli kod', Object.keys(excel).length);
+  satir('Bulutta kayıtlı', parcalar.length);
+  satir('Eşleşen', eslesen);
+  satir('Maliyeti değişen', degisen);
+  satir('Yeni eklenecek (1 ile başlayan, 15x hariç)', eklenecek.length);
+  satir('Excel\'de olmayan (aynen kalır)', eksik);
+  satir('Yayın sonrası toplam', toplam);
+  if (engel) {
+    const e = document.createElement('div');
+    e.className = 'vg-engel';
+    e.textContent = engel;
+    kutu.appendChild(e);
+  }
+  vgEl('vgYayinla').disabled = !!engel;
+  mesaj.textContent = '';
+}
+
+function maliyetZamanMetni() {
+  const d = new Date(), i = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + i(d.getMonth() + 1) + '-' + i(d.getDate()) + 'T' + i(d.getHours()) + ':' + i(d.getMinutes()) + ':' + i(d.getSeconds());
+}
+
+async function maliyetExceldenYayinla() {
+  const m = _vg && _vg.maliyet;
+  const btn = vgEl('vgYayinla');
+  const mesaj = vgEl('vgMesaj');
+  if (!m || m.engel || !mxDb || !mxKullanici) return;
+  btn.disabled = true;
+  mesaj.textContent = 'Yayınlanıyor…';
+  try {
+    const guncelleme = maliyetZamanMetni();
+    await mxDb.collection('maliyet').doc('guncel').set({ kalemler: m.kalemler, adet: m.adet, guncelleme });
+    maliyetUygula(m.kalemler, guncelleme);
+    try { localStorage.setItem(MALIYET_DEPO_ANAHTAR, JSON.stringify({ kalemler: m.kalemler, guncelleme })); } catch (e) { /* zorunlu değil */ }
+    if (typeof refreshCards === 'function') refreshCards();
+    syncTeklifPanel();
+    veriSifirla();
+    mesaj.textContent = '✓ NET maliyetleri yayınlandı (' + m.adet + ' ürün). Excel\'deki "Yeniden Hesapla" bundan sonra hepsini günceller.';
+  } catch (e) {
+    mesaj.textContent = 'Yayınlanamadı: ' + (e.code === 'permission-denied' ? 'yetki yok' : e.message);
+    btn.disabled = false;
+  }
+}
+
 async function veriYayinla() {
+  if (veriTur() === 'maliyet') return maliyetExceldenYayinla();
   if (!_vg || !_vg.sonuc || !mxDb || !mxKullanici) return;
   const tur = veriTur();
   const o = _vg.sonuc.ozet;
@@ -5633,7 +5763,7 @@ async function veriOncekiGoster() {
   const btn = vgEl('vgGeriAl');
   const tur = veriTur();
   btn.style.display = 'none';
-  if (!mxDb || !mxKullanici) return;
+  if (!mxDb || !mxKullanici || tur === 'maliyet') return;
   try {
     const d = await (tur === 'firma' ? bolgeFirmaYollari().onceki : mxDb.collection('katalog_onceki').doc(tur)).get();
     if (!d.exists || tur !== veriTur()) return;
