@@ -3152,6 +3152,22 @@ function ekUrunMaliyetli(kod) {
   if (k.charAt(0) !== '1' || k.indexOf('15') === 0) return false;
   return maliyetHazir && MALIYET[kod] !== undefined;
 }
+// V24.3: kod katalogda var ama maliyeti asistana gelmemişse "bulunamadı" yerine nedenini söyle
+function maliyetBekleyenMesaji(sorgu) {
+  const m = normalizeSpokenText(String(sorgu || '')).toLowerCase().match(/\b(\d{3}-\d{2}-\d{2}(?:-\d{3})?)\b/);
+  if (!m) return '';
+  const parca = m[1];
+  const bekleyen = EK_URUNLER.filter(u => {
+    const k = String(u.kod);
+    return k.toLowerCase().indexOf(parca) === 0 && k.charAt(0) === '1' && k.indexOf('15') !== 0
+      && MALIYET[k] === undefined && getFirmaFiyat(k) === null;
+  }).slice(0, 5);
+  if (!bekleyen.length) return '';
+  const liste = bekleyen.map(u => `<b>${u.kod}</b> – ${u.ad}`).join('<br>');
+  return `<span class="not-found">Bu ürünün maliyeti asistana henüz gönderilmemiş:</span><br>${liste}<br><br>` +
+    `<span style="font-size:12px;color:var(--text2);">Excel'de (Mesan Satış Fiyat Hesapla) <b>Yeniden Hesapla</b>'ya basınca NET fiyatı burada da görünür.</span>`;
+}
+
 function ekUrunGorunur(kod) {
   return getFirmaFiyat(kod) !== null || ekUrunMaliyetli(kod);
 }
@@ -3660,7 +3676,7 @@ function sendQuery(voiceMode = false, voiceText = '') {
           : buildMultiDetailCards(bulunanlar, showAll);
         addMessage(response, false, false, '', bulunanlar.map(p => p.kod));
       } else {
-        addMessage(`<span class="not-found">"<b>${rawQuery}</b>" için sonuç bulunamadı.</span>`, false);
+        addMessage(maliyetBekleyenMesaji(rawQuery) || `<span class="not-found">"<b>${rawQuery}</b>" için sonuç bulunamadı.</span>`, false);
       }
       return;
     }
@@ -3704,7 +3720,7 @@ function sendQuery(voiceMode = false, voiceText = '') {
       if (fallback.length > 0) {
         response = fallback.length === 1 ? buildResultCard(fallback[0], showAll) : buildMultiDetailCards(fallback, showAll);
       } else {
-        response = `<span class="not-found">"<b>${rawQuery}</b>" için sonuç bulunamadı.</span><br><br><span style="font-size:12px;color:var(--text2);">Ürün kodunun tamamını ya da farklı anahtar kelimeler deneyin.</span>`;
+        response = maliyetBekleyenMesaji(rawQuery) || `<span class="not-found">"<b>${rawQuery}</b>" için sonuç bulunamadı.</span><br><br><span style="font-size:12px;color:var(--text2);">Ürün kodunun tamamını ya da farklı anahtar kelimeler deneyin.</span>`;
       }
     } else if (results.length === 1) {
       response = buildResultCard(results[0], showAll);
