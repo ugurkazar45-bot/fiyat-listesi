@@ -3146,7 +3146,10 @@ EK_URUNLER.forEach(o => { _ekUrunMap[o.kod] = o; });
 
 // V21: fiyati olmayan ek urunler gosterilmez; yalnizca secili firmanin ozel fiyati varsa gorunur.
 // V24: maliyeti yuklu (yalnizca maliyeti okuyabilen hesapta) ek urunler NET fiyatla da gorunur.
+// Kural: kod 1 ile baslar, 15 ile baslamaz (2P0, 2Z0, 15x gibi kodlar gosterilmez)
 function ekUrunMaliyetli(kod) {
+  const k = String(kod);
+  if (k.charAt(0) !== '1' || k.indexOf('15') === 0) return false;
   return maliyetHazir && MALIYET[kod] !== undefined;
 }
 function ekUrunGorunur(kod) {
