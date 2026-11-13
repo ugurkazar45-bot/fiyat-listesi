@@ -3235,7 +3235,7 @@ function isOzelUrun(kod) {
 // Ana 3 grup (XXX-XX-XX) ile eşleşen tüm ürünleri bul
 function findByAnaKod(anaKod) {
   const a = URUNLER.filter(p => p.kod.startsWith(anaKod + '-'));
-  const b = EK_URUNLER
+  const b = _ekUrunlerAsProd
     .filter(p => p.kod.startsWith(anaKod + '-') && ekUrunGorunur(p.kod))
     .map(p => ({ kod: p.kod, ad: p.ad, br: p.br || 'AD', liste: null, n40: null, n42: null, n45: null, n48: null, n50: null, _ekUrun: true }));
   return [...a, ...b];
@@ -3256,7 +3256,7 @@ function extractMultipleCodes(rawText) {
 
   // 1b. Özel firma kodları (141- ile başlayan, değişken hane grupları): 000-00-00-000, 000-00-00-000
   (rawText.match(/\b141-\d{2,5}-\d{2,5}-\d{3}\b/g) || []).forEach(m => {
-    if (isOzelUrun(m)) addFull(m);
+    if (isOzelUrun(m) || isEkUrun(m)) addFull(m);
   });
 
   // 2. Tireli kısmi kodlar (ana kod): 000-00-00
@@ -4617,7 +4617,37 @@ function mxEkstre() {
 const MALIYET_DEPO_ANAHTAR = 'maliyetOnbellek_v21';
 let _netGirisBekliyor = false;
 
-function maliyetUygula(kalemler, guncelleme) {
+// V24.5: Excel'deki ad/birim ("kod~ad~birim|..."); katalogda adı olmayan maliyetli ürünler bunlarla gösterilir
+const MALIYET_ADLARI = {};
+const _maliyetEkKodlari = new Set();
+
+function maliyetAdlariUygula(adlar) {
+  Object.keys(MALIYET_ADLARI).forEach(k => delete MALIYET_ADLARI[k]);
+  String(adlar || '').split('|').forEach(parca => {
+    const a = parca.split('~');
+    if (a.length >= 2 && a[0] && a[1]) MALIYET_ADLARI[a[0]] = { ad: a[1], br: a[2] || 'AD' };
+  });
+}
+
+// Katalogda (liste / özel / ek) olmayan ama maliyeti ve Excel adı olan kodları "liste dışı" ürün olarak ekler.
+// EK_URUNLER'e dokunmaz; katalog veya maliyet her yüklendiğinde yeniden kurulur (sıra fark etmez).
+function maliyetUrunleriniKatalogaEkle() {
+  _maliyetEkKodlari.forEach(k => { if (_ekUrunMap[k] && _ekUrunMap[k]._maliyetten) delete _ekUrunMap[k]; });
+  for (let i = _ekUrunlerAsProd.length - 1; i >= 0; i--) if (_ekUrunlerAsProd[i]._maliyetten) _ekUrunlerAsProd.splice(i, 1);
+  _maliyetEkKodlari.clear();
+  if (!maliyetHazir) return;
+  const listede = new Set(URUNLER.map(u => u.kod));
+  const katalogda = k => listede.has(k) || !!_ozelUrunMap[k] || !!_ekUrunMap[k];
+  Object.keys(MALIYET_ADLARI).forEach(kod => {
+    if (MALIYET[kod] === undefined || !netKoduUygun(kod) || katalogda(kod)) return;
+    const a = MALIYET_ADLARI[kod];
+    _ekUrunMap[kod] = { kod, ad: a.ad, br: a.br, _maliyetten: true };
+    _ekUrunlerAsProd.push({ kod, ad: a.ad, br: a.br || 'AD', liste: null, n40: null, n42: null, n45: null, n48: null, n50: null, _ekUrun: true, _maliyetten: true });
+    _maliyetEkKodlari.add(kod);
+  });
+}
+
+function maliyetUygula(kalemler, guncelleme, adlar) {
   const yeni = {};
   String(kalemler || '').split('|').forEach(parca => {
     const i = parca.lastIndexOf(':');
@@ -4631,13 +4661,15 @@ function maliyetUygula(kalemler, guncelleme) {
   maliyetHazir = true;
   const t = String(guncelleme || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   maliyetTarihi = t ? t[3] + '.' + t[2] + '.' + t[1] : '';
+  maliyetAdlariUygula(adlar);
+  maliyetUrunleriniKatalogaEkle();
   return true;
 }
 
 function maliyetOnbellekOku() {
   try {
     const d = JSON.parse(localStorage.getItem(MALIYET_DEPO_ANAHTAR) || 'null');
-    if (d) maliyetUygula(d.kalemler, d.guncelleme);
+    if (d) maliyetUygula(d.kalemler, d.guncelleme, d.adlar);
   } catch (e) { /* onbellek zorunlu degil */ }
 }
 
@@ -4646,6 +4678,8 @@ function maliyetTemizle() {
   Object.keys(MALIYET).forEach(k => delete MALIYET[k]);
   maliyetHazir = false;
   maliyetTarihi = '';
+  maliyetAdlariUygula('');
+  maliyetUrunleriniKatalogaEkle();
   if (activeIskonto === 'net') {
     const liste = document.querySelector('.isk-btn[data-isk="liste"]');
     if (liste) liste.click();
@@ -4658,9 +4692,9 @@ async function maliyetYukle() {
     const belge = await mxDb.collection('maliyet').doc('guncel').get();
     if (!belge.exists) { console.warn('[Maliyet] Henüz yayınlanmış maliyet yok.'); return; }
     const d = belge.data();
-    if (!maliyetUygula(d.kalemler, d.guncelleme)) return;
+    if (!maliyetUygula(d.kalemler, d.guncelleme, d.adlar)) return;
     try {
-      localStorage.setItem(MALIYET_DEPO_ANAHTAR, JSON.stringify({ kalemler: d.kalemler, guncelleme: d.guncelleme }));
+      localStorage.setItem(MALIYET_DEPO_ANAHTAR, JSON.stringify({ kalemler: d.kalemler, guncelleme: d.guncelleme, adlar: d.adlar || '' }));
     } catch (e) { /* onbellek zorunlu degil */ }
     if (_netGirisBekliyor) {
       _netGirisBekliyor = false;
@@ -5012,6 +5046,8 @@ function katalogUygula() {
   oku('ozel', []).forEach(r => OZEL_URUNLER.push({ kod: r[0], ad: r[1], br: r[2], fiyat: r[3] }));
   Object.keys(_ozelUrunMap).forEach(k => delete _ozelUrunMap[k]);
   OZEL_URUNLER.forEach(o => { _ozelUrunMap[o.kod] = o; });
+  _maliyetEkKodlari.clear(); // ek haritaları yukarıda baştan kuruldu
+  maliyetUrunleriniKatalogaEkle();
 
   Object.keys(FIRMA_LISTESI).forEach(k => delete FIRMA_LISTESI[k]);
   Object.assign(FIRMA_LISTESI, oku('firma', {}));
@@ -5562,7 +5598,7 @@ function maliyetCalt01Oku(sayfalar) {
     for (let i = 0; i < Math.min(rows.length, 10); i++) {
       const b = (rows[i] || []).map(v => String(v == null ? '' : v).trim().toUpperCase());
       const kod = b.indexOf('MATERIAL'), lot = b.indexOf('SKCALCLOT'), tutar = b.indexOf('SUMCOST');
-      if (kod >= 0 && lot >= 0 && tutar >= 0) return { bas: i + 1, kod, lot, tutar };
+      if (kod >= 0 && lot >= 0 && tutar >= 0) return { bas: i + 1, kod, lot, tutar, ad: b.indexOf('STEXT'), br: b.indexOf('SKUNIT') };
     }
     return null;
   };
@@ -5572,14 +5608,18 @@ function maliyetCalt01Oku(sayfalar) {
     const rows = sayfalar[ad];
     const k = ara(rows);
     if (!k) continue;
-    const sonuc = {};
+    const sonuc = {}, adlar = {};
     for (let i = k.bas; i < rows.length; i++) {
       const r = rows[i] || [];
       const kod = String(r[k.kod] == null ? '' : r[k.kod]).trim();
       const lot = Number(r[k.lot]), tutar = Number(r[k.tutar]);
-      if (kod && isFinite(lot) && isFinite(tutar) && lot > 0 && tutar > 0) sonuc[kod] = (tutar / lot).toFixed(6);
+      if (kod && isFinite(lot) && isFinite(tutar) && lot > 0 && tutar > 0) {
+        sonuc[kod] = (tutar / lot).toFixed(6);
+        const temiz = v => String(v == null ? '' : v).replace(/[|~\t\r\n]/g, ' ').trim();
+        adlar[kod] = temiz(k.ad >= 0 ? r[k.ad] : '') + '~' + temiz(k.br >= 0 ? r[k.br] : '');
+      }
     }
-    return { sayfa: ad, maliyetler: sonuc };
+    return { sayfa: ad, maliyetler: sonuc, adlar };
   }
   return null;
 }
@@ -5613,8 +5653,9 @@ async function maliyetDosyaHazirla(sayfalar, dosyaAdi) {
   if (parcalar.length && eslesen / parcalar.length < MALIYET_ASGARI_ESLESME)
     engel = 'Excel\'deki maliyetler eksik görünüyor (' + eslesen + ' / ' + parcalar.length + ' eşleşti). Yanlış dosya olabilir; yayınlanmaz.';
   if (toplam < 1500) engel = engel || 'Toplam maliyet sayısı çok az (' + toplam + '); yayınlanmaz.';
-  if (!degisen && !eklenecek.length) engel = engel || 'Buluttaki maliyetler zaten bu Excel ile aynı; yayınlanacak değişiklik yok.';
-  _vg = { maliyet: { kalemler: yeniParcalar.join('|'), adet: toplam, engel } };
+  if (!degisen && !eklenecek.length && belge.exists && belge.data().adlar) engel = engel || 'Buluttaki maliyetler zaten bu Excel ile aynı; yayınlanacak değişiklik yok.';
+  const adMetni = yeniParcalar.map(p => p.slice(0, p.lastIndexOf(':'))).filter(k => okunan.adlar[k]).map(k => k + '~' + okunan.adlar[k]).join('|');
+  _vg = { maliyet: { kalemler: yeniParcalar.join('|'), adlar: adMetni, adet: toplam, engel } };
 
   vgEl('vgEslesme').style.display = 'none';
   vgEl('vgKaldirSatir').style.display = 'none';
@@ -5661,9 +5702,9 @@ async function maliyetExceldenYayinla() {
   mesaj.textContent = 'Yayınlanıyor…';
   try {
     const guncelleme = maliyetZamanMetni();
-    await mxDb.collection('maliyet').doc('guncel').set({ kalemler: m.kalemler, adet: m.adet, guncelleme });
-    maliyetUygula(m.kalemler, guncelleme);
-    try { localStorage.setItem(MALIYET_DEPO_ANAHTAR, JSON.stringify({ kalemler: m.kalemler, guncelleme })); } catch (e) { /* zorunlu değil */ }
+    await mxDb.collection('maliyet').doc('guncel').set({ kalemler: m.kalemler, adlar: m.adlar, adet: m.adet, guncelleme });
+    maliyetUygula(m.kalemler, guncelleme, m.adlar);
+    try { localStorage.setItem(MALIYET_DEPO_ANAHTAR, JSON.stringify({ kalemler: m.kalemler, guncelleme, adlar: m.adlar })); } catch (e) { /* zorunlu değil */ }
     if (typeof refreshCards === 'function') refreshCards();
     syncTeklifPanel();
     veriSifirla();
@@ -6700,7 +6741,7 @@ function parseSiparisMetni(metin) {
     // 1b) Özel üretim (141-) kodları — değişken uzunluklu format
     if (!kod) {
       const ozelMatch = satir.match(/\b(141-\d{2,5}-\d{2,5}-\d{3})\b/);
-      if (ozelMatch && isOzelUrun(ozelMatch[1])) kod = ozelMatch[1];
+      if (ozelMatch && (isOzelUrun(ozelMatch[1]) || isEkUrun(ozelMatch[1]))) kod = ozelMatch[1];
     }
 
     // 2) Mesan kodu yoksa, seçili firmanın kendi kodu geçiyor olabilir (örn. FİRMA: X0000)
